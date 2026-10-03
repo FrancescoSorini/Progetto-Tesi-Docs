@@ -38,38 +38,147 @@ Il metodo `createAccount` accetta ora anche i parametri di onboarding (`List<Str
 3. Inizializza il contatore di rate-limiting (max 1 post/giorno).
 
 ```java
-// Estratto modificato: bramble-core/.../account/AccountManagerImpl.java
+// File: bramble-core/src/main/java/org/briarproject/bramble/account/AccountManagerImpl.java
 
-@Override
-public boolean createAccount(String name, String password,
-                             List<String> selectedTopics,
-                             @Nullable String onboardingToken) {
-    synchronized (stateChangeLock) {
-        if (hasDatabaseKey())
-            throw new AssertionError("Already have a database key");
+package org.briarproject.bramble.account;
 
-        Identity identity = identityManager.createIdentity(name);
-        identityManager.registerIdentity(identity);
+import org.briarproject.bramble.api.account.AccountManager;
+import org.briarproject.bramble.api.crypto.CryptoComponent;
+import org.briarproject.bramble.api.crypto.SecretKey;
+import org.briarproject.bramble.api.db.DatabaseConfig;
+import org.briarproject.bramble.api.db.DbException;
+import org.briarproject.bramble.api.identity.AuthorId;
+import org.briarproject.bramble.api.identity.Identity;
+import org.briarproject.bramble.api.identity.IdentityManager;
+import org.briarproject.bramble.api.settings.Settings;
+import org.briarproject.bramble.api.settings.SettingsManager;
+import org.briarproject.nullsafety.MethodsNotNullByDefault;
+import org.briarproject.nullsafety.ParametersNotNullByDefault;
 
-        SecretKey key = crypto.generateSecretKey();
-        if (!encryptAndStoreDatabaseKey(key, password)) return false;
+import java.util.List;
+import java.util.logging.Logger;
 
-        databaseKey = key;
+import javax.annotation.Nullable;
+import javax.inject.Inject;
 
-        // [NUOVA LOGICA TESI]: Salvataggio dello stato di Onboarding & Sandbox initial tier
-        initializeCommunitySandboxProfile(identity.getAuthor().getId(), selectedTopics, onboardingToken);
+import static java.util.logging.Level.WARNING;
 
-        return true;
+@MethodsNotNullByDefault
+@ParametersNotNullByDefault
+class AccountManagerImpl implements AccountManager {
+
+    private static final Logger LOG = Logger.getLogger(AccountManagerImpl.class.getName());
+
+    // Namespace del database di Bramble per il controllo della fiducia di comunità
+    private static final String SETTINGS_NAMESPACE_COMMUNITY = "community.trust";
+
+    private final DatabaseConfig databaseConfig;
+    private final CryptoComponent crypto;
+    private final IdentityManager identityManager;
+    private final SettingsManager settingsManager; // [INIEZIONE DIPENDENZA]
+
+    @Inject
+    AccountManagerImpl(DatabaseConfig databaseConfig, 
+                       CryptoComponent crypto,
+                       IdentityManager identityManager, 
+                       SettingsManager settingsManager) {
+        this.databaseConfig = databaseConfig;
+        this.crypto = crypto;
+        this.identityManager = identityManager;
+        this.settingsManager = settingsManager;
+    }
+
+    @Override
+    public boolean createAccount(String name, String password, 
+                                 List<String> selectedTopics, 
+                                 @Nullable String onboardingToken) {
+        synchronized (stateChangeLock) {
+            if (hasDatabaseKey())
+                throw new AssertionError("Already have a database key");
+
+            // 1. Creazione dell'Identità Crittografica (Author Ed25519)
+            Identity identity = identityManager.createIdentity(name);
+            identityManager.registerIdentity(identity);
+
+            // 2. Generazione della Chiave Simmetrica del Database Cifrato
+            SecretKey key = crypto.generateSecretKey();
+            if (!encryptAndStoreDatabaseKey(key, password)) return false;
+
+            databaseKey = key;
+
+            // 3. [INIZIALIZZAZIONE PROFILO SANDBOX PER LA TESI]
+            initializeCommunitySandboxProfile(identity.getAuthor().getId(), selectedTopics, onboardingToken);
+
+            return true;
+        }
+    }
+
+    /**
+     * Inizializza le impostazioni della Sandbox (PROBATION) nel DB cifrato di Bramble.
+     */
+    private void initializeCommunitySandboxProfile(AuthorId authorId, List<String> topics, @Nullable String token) {
+        try {
+            Settings settings = new Settings();
+            
+            // A. Imposta lo stato iniziale del nodo su Sandbox (PROBATION)
+            settings.put("trustTier", "PROBATION");
+            
+            // B. Configura la quota iniziale di Rate Limiting (1 post al giorno)
+            settings.put("maxPostsPerDay", "1");
+            settings.put("postsToday", "0");
+            settings.put("lastPostTimestamp", String.valueOf(System.currentTimeMillis()));
+            
+            // C. Salva i Topic di interesse scelti dall'utente durante l'onboarding
+            if (topics != null && !topics.isEmpty()) {
+                settings.put("subscribedTopics", String.join(",", topics));
+            } else {
+                settings.put("subscribedTopics", "");
+            }
+            
+            // D. Registra il token di invito/onboarding (se proveniente da Web Landing o QR)
+            if (token != null) {
+                settings.put("onboardingToken", token);
+            }
+            
+            // E. Scrittura persistente nel Database Cifrato di Bramble
+            settingsManager.mergeSettings(settings, SETTINGS_NAMESPACE_COMMUNITY);
+            LOG.info("Inizializzato profilo Sandbox (PROBATION) nel DB per l'autore: " + authorId);
+
+        } catch (DbException e) {
+            LOG.log(WARNING, "Errore nell'inizializzazione del profilo Sandbox dell'account", e);
+        }
     }
 }
+```
+#### 🟢Come viene letto ed utilizzato questo profilo a runtime?
+Successivamente, quando il nodo tenta di pubblicare un post o quando arriva un messaggio dalla rete, il modulo **`TrustManagerImpl`** legge le impostazioni salvate da **`AccountManagerImpl`**:
 
-private void initializeCommunitySandboxProfile(AuthorId authorId, List<String> topics, @Nullable String token) {
-    // Registra il profilo iniziale in modalità PROBATION (Sandbox)
-    // Imposta la quota giornaliera di rate limit (1 post al giorno)
-    // Salva i topic di interesse sottoscritti dall'utente
+```java
+// File: bramble-core/src/main/java/org/briarproject/bramble/trust/TrustManagerImpl.java
+
+public boolean canPublishPost() throws DbException {
+    // Carica le impostazioni dal namespace "community.trust" del DB cifrato
+    Settings settings = settingsManager.getSettings("community.trust");
+    
+    String tier = settings.getOrDefault("trustTier", "PROBATION");
+    if ("ISOLATED".equals(tier)) return false;
+
+    if ("PROBATION".equals(tier)) {
+        int maxPosts = Integer.parseInt(settings.getOrDefault("maxPostsPerDay", "1"));
+        int postsToday = Integer.parseInt(settings.getOrDefault("postsToday", "0"));
+        long lastPostTime = Long.parseLong(settings.getOrDefault("lastPostTimestamp", "0"));
+
+        // Se è trascorso un giorno (24h), resetta il contatore
+        if (System.currentTimeMillis() - lastPostTime > 86_400_000L) {
+            postsToday = 0;
+        }
+
+        return postsToday < maxPosts;
+    }
+
+    return true; // Per i nodi FULL_MEMBER non vi è restrizione restrittiva
 }
 ```
-
 ---
 
 ### B. `SetupViewModel.java` & UI Wizard (`AuthorNameFragment.java`)
