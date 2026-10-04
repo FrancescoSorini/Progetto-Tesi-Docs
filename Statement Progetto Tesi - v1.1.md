@@ -119,11 +119,10 @@ nativa:
   genera e conserva l'identità crittografica dell'utente e comunica le
   risorse tecnologiche disponibili.
 
-- **Onboarding Controllato:** Se l'utente entra autonomamente, la
-  richiesta deve essere intercettata e validata da un membro
-  preesistente. Se entra tramite invito di un membro, la richiesta
-  formale di approvazione può essere snellita ma richiede comunque la
-  comunicazione dell'identità.
+- **Onboarding Controllato:** Se l'utente entra autonomamente, le 
+  sue azioni saranno limitate (Sandbox). Se entra tramite invito di un
+  membro, la richiesta formale di approvazione può essere snellita ma 
+  richiede comunque la comunicazione dell'identità.
 
 - **Capacità Limitate iniziali (Sandbox di Sicurezza):** Per evitare
   minacce alla sicurezza della comunità, il nuovo nodo accede
