@@ -5,6 +5,30 @@ Questo documento analizza in dettaglio la riprogettazione del **meccanismo di ac
 ---
 
 ## 1. Architettura dell'Accesso: Browser Web vs App Nativa
+```mermaid
+sequenceDiagram
+    autonumber
+    actor NuovoUtente as Nuovo Utente
+    participant Gateway as Gateway (Web Server Embedded)
+    participant AppAndroid as App Android (Smartphone)
+    participant NodoComunita as Nodo della Comunità (DTN p2p)
+
+    
+    NuovoUtente->>Gateway: Scansiona QR Code
+    Gateway-->>NuovoUtente: Mostra info comunità, regole, topic, limiti browser
+
+    
+    NuovoUtente->>Gateway: Compila Richiesta (Pseudonimo + topic)
+    Gateway-->>NuovoUtente: Fornisce Link per download APK nativo Android
+
+    NuovoUtente->>AppAndroid: Installa e avvia l'app Android
+    
+    AppAndroid->>AppAndroid: Genera Identità Crittografica (Author/ KeyPair)
+    AppAndroid->>AppAndroid: Account modalità SANDBOX (Probation: max 1 post/giorno)
+
+    AppAndroid->>NodoComunita: Invio Onboarding Request via p2p (WiFi Direct / Bluetooth)
+    NodoComunita-->>AppAndroid: Approvazione del membro
+```
 
 ---
 

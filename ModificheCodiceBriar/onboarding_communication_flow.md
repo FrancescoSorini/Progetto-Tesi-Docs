@@ -9,38 +9,50 @@ Questo documento descrive nel dettaglio il **flusso temporale**, la **sequenza d
 ```mermaid
 sequenceDiagram
     autonumber
-    actor NM as Nuovo Membro (Sandbox / PROBATION)
-    participant NM_DB as DB Cifrato Nuovo Membro
-    participant BSS as Bramble Sync Protocol (BTP/Bluetooth/Wi-Fi)
-    participant EM_DB as DB Cifrato Membro Esistente
-    actor EM as Membro Esistente (FULL_MEMBER)
+    actor NuovoUtenteSandbox as Nuovo Utente (SANDBOX)
+    participant DBCifratoNuovo as DB Cifrato Nuovo Membro
+    participant MembroEsistente as Membro Esistente (FULL_MEMBER)
+    participant DBCifratoEsistente as DB Cifrato Membro Esistente
 
-    Note over NM: FASE 1: Creazione e Firma Locale
-    NM->>NM: 1. Compila OnboardingRequest (Pseudonimo, Topic)
-    NM->>NM: 2. Serializza in BDF (BdfList) e firma con chiave privata Ed25519
-    NM->>NM_DB: 3. ClientHelper.addLocalMessage(txn, m, meta, shared=true)
+    rect rgb(250, 104, 0)
+        Note over NuovoUtenteSandbox: Fase 1: Creazione Richiesta e Firma Locale
+    end
 
-    Note over NM, EM: FASE 2: Trasporto Epidemico via BSS
-    NM->>BSS: 4. Connessione P2P (Wi-Fi Direct / Bluetooth)
-    BSS->>EM_DB: 5. Handshake BSS: OFFER -> WANT -> REQUEST -> MSG -> ACK
+    NuovoUtenteSandbox->>NuovoUtenteSandbox: OnBoardingRequest(Pseudonimo, Topic)
+    NuovoUtenteSandbox->>NuovoUtenteSandbox: Serializzazione in BDF e Firma con Chiave Privata
+    NuovoUtenteSandbox->>DBCifratoNuovo: ClientHelper.addLocalMessage(shared=true)
 
-    Note over EM: FASE 3: Validazione e Notifica
-    EM_DB->>EM: 6. CommunityMessageHook.incomingMessage(txn, m, body, meta)
-    EM_DB->>EM: 7. ClientHelper.verifySignature() -> Valida Firma dell'Applicante
-    EM_DB->>EM: 8. EventBus.fireEvent(OnboardingRequestReceivedEvent)
-    EM-->>EM: 9. Notifica UI: "Nuova richiesta da 'Mario'. Approvare?"
+    rect rgb(250, 104, 0)
+        Note over NuovoUtenteSandbox, MembroEsistente: Fase 2: Trasporto via BTP (avvio BSS Sync Session, 2 thread paralleli su ciascun nodo)
+    end
 
-    Note over EM: FASE 4: Approvazione da parte del Membro Esistente
-    EM->>EM: 10. Clicca "Applica Approvazione" in UI
-    EM->>EM: 11. Genera OnboardingResponse (Approved = true) e firma con la sua chiave FULL_MEMBER
-    EM->>EM_DB: 12. ClientHelper.addLocalMessage(txn, responseMsg, meta, shared=true)
+    NuovoUtenteSandbox<<->>MembroEsistente: Handshake BSS: OFFER > WANT > REQUEST > MSG > ACK
+    MembroEsistente->>MembroEsistente: CommunityMessageHook.incomingMessage(txt, m, body, meta)
 
-    Note over EM, NM: FASE 5: Ricezione Approvazione e Promozione
-    EM_DB->>BSS: 13. Sincronizzazione BSS verso Nuovo Membro
-    BSS->>NM_DB: 14. BSS scambia OnboardingResponse con Nuovo Membro
-    NM_DB->>NM: 15. CommunityMessageHook valida firma del FULL_MEMBER
-    NM->>NM_DB: 16. TrustManagerImpl.promoteToFullMember() -> Imposta trustTier = "FULL_MEMBER"
-    NM-->>NM: 17. UI Notifica: "Modalità Sandbox Riscattata! Sei Membro Pieno."
+    rect rgb(250, 104, 0)
+        Note over MembroEsistente: Fase 3: Validazione e Notifica
+    end
+
+    MembroEsistente->>DBCifratoEsistente: ClientHelper.verifySignature()
+    MembroEsistente->>MembroEsistente: EventBus.fireEvent(OnBoardingRequest)
+    MembroEsistente->>MembroEsistente: Notifica UI: "Approvare richiesta da Nuovo Membro?"
+
+    rect rgb(250, 104, 0)
+        Note over MembroEsistente: Fase 4: Approvazione
+    end
+
+    MembroEsistente->>MembroEsistente: Clicca "Conferma Approvazione" in UI
+    MembroEsistente->>MembroEsistente: OnboardingResponse(Approved=true) e firma con propria chiave
+    MembroEsistente->>DBCifratoEsistente: ClientHelper.addLocalMesage(responseMsg, shared=true)
+
+    rect rgb(250, 104, 0)
+        Note over NuovoUtenteSandbox, MembroEsistente: Fase 5: Ricezione Approvazione e Promozione (tramite BTP + BSS)
+    end
+
+    MembroEsistente->>NuovoUtenteSandbox: Scambio OnboardingResponse col nuovo membro
+    NuovoUtenteSandbox->>DBCifratoNuovo: Valida firma del FULL_MEMBER
+    NuovoUtenteSandbox->>DBCifratoNuovo: TrustManagerImpl.promoteToFullMember()
+    NuovoUtenteSandbox->>NuovoUtenteSandbox: Notifica UI: Uscita dalla Sandbox, sei membro pieno!
 ```
 
 ---
