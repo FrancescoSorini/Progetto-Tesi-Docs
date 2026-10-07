@@ -1,58 +1,51 @@
-# Documentazione Dettagliata: Flusso di Comunicazione dell'Onboarding (P2P DTN)
+# Documentazione Dettagliata: Flusso di Comunicazione dell'Onboarding e Quorum di Prossimità (P2P DTN)
 
-Questo documento descrive nel dettaglio il **flusso temporale**, la **sequenza di messaggi** e le **chiamate di codice** necessarie per gestire la comunicazione di una richiesta di onboarding tra un **Nuovo Membro (Applicante in Sandbox)** ed un **Membro Già Esistente (`FULL_MEMBER`)** nella rete Briar.
+Questo documento descrive nel dettaglio il **flusso temporale**, la **sequenza dei messaggi**, le **strutture BDF** e le **chiamate di codice** necessarie per gestire l'onboarding di un **Nuovo Membro (Applicante in Sandbox)**, la raccolta degli endorsement da parte dei **Membri Esistenti (`FULL_MEMBER`)** e la **valutazione del Quorum di Prossimità Multicriterio**.
 
 ---
 
-## 1. Diagramma di Sequenza Temporale
+## 1. Diagramma di Sequenza Temporale (Flusso a Quorum)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor NuovoUtenteSandbox as Nuovo Utente (SANDBOX)
-    participant DBCifratoNuovo as DB Cifrato Nuovo Membro
-    participant MembroEsistente as Membro Esistente (FULL_MEMBER)
-    participant DBCifratoEsistente as DB Cifrato Membro Esistente
+    actor Alice as Alice (Nuovo Membro - Sandbox)
+    participant Alice_DB as DB Cifrato di Alice
+    participant BSS as Bramble Sync Protocol (BTP P2P)
+    participant Bob_DB as DB Cifrato di Bob
+    actor Bob as Bob (Membro Esistente 1 - FULL_MEMBER)
+    actor Charlie as Charlie (Membro Esistente 2 - FULL_MEMBER)
 
-    rect rgb(250, 104, 0)
-        Note over NuovoUtenteSandbox: Fase 1: Creazione Richiesta e Firma Locale
-    end
+    
+    Note over Alice, Alice_DB: FASE 1: Creazione Richiesta e Inizializzazione Sandbox
+    Alice->>Alice: 1. Compila OnboardingRequest (Pseudonimo "Alice", Topics)
+    Alice->>Alice_DB: 2. AccountManagerImpl.createAccount() -> trustTier = PROBATION, sandboxStartTime = NOW
+    Alice->>Alice_DB: 3. ClientHelper.addLocalMessage(OnboardingRequest, shared=true)
 
-    NuovoUtenteSandbox->>NuovoUtenteSandbox: OnBoardingRequest(Pseudonimo, Topic)
-    NuovoUtenteSandbox->>NuovoUtenteSandbox: Serializzazione in BDF e Firma con Chiave Privata
-    NuovoUtenteSandbox->>DBCifratoNuovo: ClientHelper.addLocalMessage(shared=true)
+    
+    Note over Alice, Bob: FASE 2: Incontro P2P #1 con Bob (Primo Endorsement / Sponsor)
+    Alice<<->>Bob: Handshake BSS (OFFER -> REQUEST -> MESSAGE -> ACK)
+    Bob->>Bob_DB: CommunityMessageHook valida firma Ed25519 di Alice
+    Bob->>Bob: Bob clicca "Esprimi Fiducia" in UI
+    Bob->>Bob_DB: Genera TrustEndorsementMessage(Alice, Bob) e firma con chiave Bob
+    Bob<<->>Alice: BSS trasferisce TrustEndorsementMessage ad Alice
+    Alice->>Alice_DB: Incrementa endorsementCount = 1, imposta sponsorAuthorId = Bob
 
-    rect rgb(250, 104, 0)
-        Note over NuovoUtenteSandbox, MembroEsistente: Fase 2: Trasporto via BTP (avvio BSS Sync Session, 2 thread paralleli su ciascun nodo)
-    end
+   
+    Note over Alice, Charlie: FASE 3: Periodo di Osservazione (72h) & Incontri P2P Successivi
 
-    NuovoUtenteSandbox<<->>MembroEsistente: Handshake BSS: OFFER > WANT > REQUEST > MSG > ACK
-    MembroEsistente->>MembroEsistente: CommunityMessageHook.incomingMessage(txt, m, body, meta)
+    Note over Alice: Alice pubblica 1 Post valido (validPostsCount = 1, abuseFlagCount = 0)
 
-    rect rgb(250, 104, 0)
-        Note over MembroEsistente: Fase 3: Validazione e Notifica
-    end
+    Note over Alice, Charlie: Trascorrono 3 giorni (72 ore) dall'onboarding
 
-    MembroEsistente->>DBCifratoEsistente: ClientHelper.verifySignature()
-    MembroEsistente->>MembroEsistente: EventBus.fireEvent(OnBoardingRequest)
-    MembroEsistente->>MembroEsistente: Notifica UI: "Approvare richiesta da Nuovo Membro?"
+    Alice<<->>Charlie: Incontro P2P #2: Charlie invia TrustEndorsementMessage(Alice, Charlie)
+    Alice->>Alice_DB: Incrementa endorsementCount = 2 (Raccolti K=3 endorsement totali)
 
-    rect rgb(250, 104, 0)
-        Note over MembroEsistente: Fase 4: Approvazione
-    end
-
-    MembroEsistente->>MembroEsistente: Clicca "Conferma Approvazione" in UI
-    MembroEsistente->>MembroEsistente: OnboardingResponse(Approved=true) e firma con propria chiave
-    MembroEsistente->>DBCifratoEsistente: ClientHelper.addLocalMesage(responseMsg, shared=true)
-
-    rect rgb(250, 104, 0)
-        Note over NuovoUtenteSandbox, MembroEsistente: Fase 5: Ricezione Approvazione e Promozione (tramite BTP + BSS)
-    end
-
-    MembroEsistente->>NuovoUtenteSandbox: Scambio OnboardingResponse col nuovo membro
-    NuovoUtenteSandbox->>DBCifratoNuovo: Valida firma del FULL_MEMBER
-    NuovoUtenteSandbox->>DBCifratoNuovo: TrustManagerImpl.promoteToFullMember()
-    NuovoUtenteSandbox->>NuovoUtenteSandbox: Notifica UI: Uscita dalla Sandbox, sei membro pieno!
+    Note over Alice, Alice_DB: FASE 4: Valutazione Quorum e Promozione Locale
+    Alice->>Alice_DB: TrustManagerImpl.evaluatePromotionEligibility()
+    Note over Alice_DB: Verificati TUTTI i 5 requisiti (72h, K=3 Endorsement, Sponsor, 1 Post, 0 Abusi)
+    Alice_DB->>Alice_DB: TrustManagerImpl.executePromotionToFullMember() -> trustTier = FULL_MEMBER
+    Alice-->>Alice: Notifica UI: "Sandbox Disattivata! Ora sei Membro Pieno della Comunità."
 ```
 
 ---
@@ -61,17 +54,39 @@ sequenceDiagram
 
 ---
 
-### FASE 1: Creazione della Richiesta e Firma Locale (Nuovo Membro)
+### FASE 1: Creazione della Richiesta e Inizializzazione Sandbox (Alice)
 
-Quando il nuovo membro completa il wizard d'ingresso nell'app nativa, la sua app genera la richiesta di onboarding e la memorizza nel proprio database cifrato pronta per la trasmissione.
+Quando Alice completa il wizard nell'app nativa, la sua app genera la richiesta di onboarding e la memorizza nel proprio database cifrato avviando il contatore temporale di Sandbox.
 
 #### Chiamate di Codice:
 
-1. **Creazione dell'Oggetto Dati**:
-   L'app raccoglie l'identità locale `Author` (generata durante `createAccount`) ed i topic scelti.
+1. **Inizializzazione Profilo Sandbox in `AccountManagerImpl.java`**:
+   ```java
+   // File: bramble-core/.../account/AccountManagerImpl.java
 
-2. **Serializzazione nel Formato Binario BDF (`BdfList`)**:
-   In Bramble, ogni messaggio è serializzato in una struttura `BdfList`:
+   private void initializeCommunitySandboxProfile(AuthorId authorId, List<String> topics, @Nullable String token) {
+       try {
+           Settings settings = new Settings();
+           long now = System.currentTimeMillis();
+           
+           settings.put("trustTier", "PROBATION");
+           settings.put("sandboxStartTime", String.valueOf(now)); // Inizio vincolo 72h
+           settings.put("endorsementCount", "0");
+           settings.put("validPostsCount", "0");
+           settings.put("abuseFlagCount", "0");
+           settings.put("maxPostsPerDay", "1");
+           
+           if (token != null) settings.put("onboardingToken", token);
+           if (topics != null) settings.put("subscribedTopics", String.join(",", topics));
+           
+           settingsManager.mergeSettings(settings, "community.trust");
+       } catch (DbException e) {
+           LOG.log(WARNING, "Errore inizializzazione profilo Sandbox", e);
+       }
+   }
+   ```
+
+2. **Creazione della `OnboardingRequest` in BDF**:
    ```java
    // File: briar-core/.../community/CommunityOnboardingManagerImpl.java
 
@@ -80,356 +95,174 @@ Quando il nuovo membro completa il wizard d'ingresso nell'app nativa, la sua app
 
        long timestamp = System.currentTimeMillis();
 
-       // 1. Costruzione del corpo del messaggio BDF
        BdfList bodyToSign = BdfList.of(
-           MSG_TYPE_ONBOARDING_REQUEST,          // Integer: 0 per Onboarding Request
-           clientHelper.toList(applicantAuthor),  // BdfList dell'autore applicante
-           BdfList.of(topics),                   // BdfList dei topic scelti
-           timestamp                             // Long: Timestamp
+           MSG_TYPE_ONBOARDING_REQUEST,          // Integer: 0
+           clientHelper.toList(applicantAuthor),  // BdfList dell'autore applicante (Alice)
+           BdfList.of(topics),                   // Topics scelti
+           timestamp
        );
 
-       // 2. Firma del messaggio con la chiave privata Ed25519 dell'applicante
        byte[] signature = clientHelper.sign(
            "org.briarproject.briar.community/ONBOARDING_REQUEST",
            bodyToSign,
            identityManager.getLocalAuthor().getPrivateKey()
        );
 
-       // 3. Aggiunta della firma alla lista finale
        BdfList fullBody = BdfList.of(bodyToSign, signature);
-       byte[] bodyBytes = clientHelper.toByteArray(fullBody);
-
-       // 4. Creazione del messaggio Bramble Sync BSS per il Gruppo della Comunità
-       return clientHelper.createMessage(communityTopicGroupId, timestamp, bodyBytes);
-   }
-   ```
-
-3. **Inserimento nel Database di Bramble per la Sincronizzazione**:
-   ```java
-   db.runInTransaction(false, txn -> {
-       BdfDictionary metadata = new BdfDictionary();
-       metadata.put("type", MSG_TYPE_ONBOARDING_REQUEST);
-       metadata.put("read", true);
-
-       // shared = true comunica a Bramble Sync di offrire questo messaggio ai peer vicini
-       clientHelper.addLocalMessage(txn, onboardingMessage, metadata, true);
-   });
-   ```
-
----
-
-### FASE 2: Trasporto P2P Epidemico via Bramble Sync Protocol (BSS) - APPROFONDIMENTO TECNICO
-
-Non appena lo smartphone del nuovo membro entra nel raggio Bluetooth o Wi-Fi Direct di un membro della comunità, il protocollo **BTP (Bramble Transport Protocol)** stabilisce un canale di trasporto bidirezionale cifrato.
-
-Sopra questo canale, Bramble avvia una **BSS Sync Session** composta da due thread paralleli su ciascun nodo:
-- **`IncomingSession.java`**: Ciclo di lettura in ascolto dei record BSS in arrivo dallo stream.
-- **`DuplexOutgoingSession.java`**: Ciclo di scrittura che seleziona ed invia i record BSS verso lo stream.
-
-#### Diagramma di Dettaglio dei Record BSS (Fase 2):
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant NM_Out as DuplexOutgoingSession (Nuovo Membro)
-    participant NM_DB as DatabaseComponent (Nuovo Membro)
-    participant EM_In as IncomingSession (Membro Esistente)
-    participant EM_DB as DatabaseComponent (Membro Esistente)
-    participant EM_Out as DuplexOutgoingSession (Membro Esistente)
-
-    Note over NM_Out, EM_In: 2.1 - Negoziazione Versioni Protocollo
-    NM_Out->>EM_In: Record VERSIONS (versioni supportate)
-    EM_In->>EM_DB: dbExecutor.execute(ReceiveVersions) -> db.setSyncVersions(txn, contactId, versions)
-
-    Note over NM_Out, EM_In: 2.2 - Offerta del Messaggio (OFFER)
-    NM_Out->>NM_DB: db.getOffer(txn, contactId) -> Recupera MessageId dell'OnboardingRequest
-    NM_Out->>EM_In: Record OFFER (MessageId)
-    EM_In->>EM_DB: dbExecutor.execute(ReceiveOffer) -> db.receiveOffer(txn, contactId, offer)
-    EM_DB-->>EM_Out: Invia evento interno MessageToRequestEvent
-
-    Note over EM_Out, NM_Out: 2.3 - Richiesta del Corpo del Messaggio (REQUEST)
-    EM_Out->>EM_DB: db.getRequest(txn, contactId) -> Recupera MessageId da richiedere
-    EM_Out->>NM_Out: Record REQUEST (MessageId)
-    NM_Out->>NM_DB: dbExecutor.execute(ReceiveRequest) -> db.receiveRequest(txn, contactId, request)
-    NM_DB-->>NM_Out: Invia evento interno MessageRequestedEvent
-
-    Note over NM_Out, EM_In: 2.4 - Trasmissione del Pacchetto Dati (MESSAGE)
-    NM_Out->>NM_DB: db.getBatch(txn, contactId, BATCH_CAPACITY) -> Estrae byte cifrati del messaggio
-    NM_Out->>EM_In: Record MESSAGE (Message completo con BdfList & Firme)
-    EM_In->>EM_DB: dbExecutor.execute(ReceiveMessage) -> db.receiveMessage(txn, contactId, message)
-    EM_DB->>EM_DB: Invia il messaggio a ValidationManagerImpl e CommunityMessageHook
-    EM_DB-->>EM_Out: Invia evento interno MessageToAckEvent
-
-    Note over EM_Out, NM_Out: 2.5 - Conferma di Ricezione (ACK)
-    EM_Out->>EM_DB: db.getAck(txn, contactId) -> Genera ACK per MessageId
-    EM_Out->>NM_Out: Record ACK (MessageId)
-    NM_Out->>NM_DB: dbExecutor.execute(ReceiveAck) -> db.receiveAck(txn, contactId, ack)
-```
-
-#### Dettaglio delle Funzioni e Chiamate di Codice nella Fase 2:
-
-##### 1. Avvio della Sessione di Sincronizzazione (`SyncSessionFactoryImpl.java`)
-Quando il transport plugin (Bluetooth/Wi-Fi Direct) segnala una connessione attiva, viene invocato `SyncSessionFactoryImpl.createDuplexSyncSession(...)` che istanzia:
-- `SyncRecordReaderImpl`: Parser che decodifica l'intestazione ed il payload dei record dal `TransportConnectionReader`.
-- `SyncRecordWriterImpl`: Encoder che impacchetta e cifra i record verso il `TransportConnectionWriter`.
-- `IncomingSession` e `DuplexOutgoingSession`.
-
-##### 2. Ciclo di Lettura dei Record (`IncomingSession.java`)
-Il thread `IncomingSession.run()` rimane in ascolto nel ciclo principale ed invoca i metodi del `SyncRecordReader`:
-```java
-// File: bramble-core/src/main/java/org/briarproject/bramble/sync/IncomingSession.java
-
-while (!interrupted) {
-    if (recordReader.hasAck()) {
-        Ack a = recordReader.readAck();
-        dbExecutor.execute(new ReceiveAck(a));
-    } else if (recordReader.hasMessage()) {
-        Message m = recordReader.readMessage();
-        dbExecutor.execute(new ReceiveMessage(m));
-    } else if (recordReader.hasOffer()) {
-        Offer o = recordReader.readOffer();
-        dbExecutor.execute(new ReceiveOffer(o));
-    } else if (recordReader.hasRequest()) {
-        Request r = recordReader.readRequest();
-        dbExecutor.execute(new ReceiveRequest(r));
-    } else if (recordReader.hasVersions()) {
-        Versions v = recordReader.readVersions();
-        dbExecutor.execute(new ReceiveVersions(v));
-    }
-}
-```
-
-##### 3. Negoziazione delle Versioni (`Versions`)
-- **Scrittura**: `DuplexOutgoingSession` invia `recordWriter.writeVersions(new Versions(SUPPORTED_VERSIONS))`.
-- **Lettura**: `IncomingSession` esegue `dbExecutor.execute(new ReceiveVersions(versions))`.
-- **Chiamata DB**: `db.setSyncVersions(txn, contactId, supported)`.
-
-##### 4. Invio dell'Offerta (`Offer`)
-- **Scrittura**: `DuplexOutgoingSession` esegue la transazione `db.getOffer(txn, contactId)` per raccogliere gli ID dei messaggi non ancora offerti al peer. Scrive il record via `recordWriter.writeOffer(offer)`.
-- **Lettura**: Nel membro esistente, `IncomingSession` legge l'offerta ed esegue `db.receiveOffer(txn, contactId, offer)`:
-  ```java
-  // All'interno di DatabaseComponentImpl.java
-  public void receiveOffer(Transaction txn, ContactId contactId, Offer offer) {
-      for (MessageId id : offer.getMessageIds()) {
-          if (!containsMessage(txn, id) && isGroupVisible(txn, contactId, id)) {
-              // Marca il messaggio come desiderato (WANT)
-              setRequested(txn, contactId, id, true);
-              eventBus.fireEvent(new MessageToRequestEvent(contactId, id));
-          }
-      }
-  }
-  ```
-
-##### 5. Inoltro della Richiesta (`Request`)
-- **Scrittura**: L'evento `MessageToRequestEvent` risveglia la `DuplexOutgoingSession` del membro esistente, che esegue `db.getRequest(txn, contactId)` e trasmette `recordWriter.writeRequest(request)`.
-- **Lettura**: L'applicante riceve la richiesta e `IncomingSession` esegue `db.receiveRequest(txn, contactId, request)`:
-  ```java
-  public void receiveRequest(Transaction txn, ContactId contactId, Request request) {
-      for (MessageId id : request.getMessageIds()) {
-          setOffered(txn, contactId, id, true);
-          eventBus.fireEvent(new MessageRequestedEvent(contactId, id));
-      }
-  }
-  ```
-
-##### 6. Trasmissione ed Inserimento del Pacchetto Dati (`Message`)
-- **Scrittura**: L'evento `MessageRequestedEvent` attiva la routine `generateBatchQueued` nella `DuplexOutgoingSession` dell'applicante.
-  Esegue `db.getBatch(txn, contactId, BATCH_CAPACITY)`, estrae i byte del messaggio dell'onboarding e li trasmette via `recordWriter.writeMessage(message)`.
-- **Lettura & Consegna**: Il membro esistente riceve il messaggio ed esegue `db.receiveMessage(txn, contactId, message)`:
-  ```java
-  public void receiveMessage(Transaction txn, ContactId contactId, Message message) {
-      // 1. Memorizza i byte grezzi nel database cifrato
-      addIncomingMessage(txn, message);
-
-      // 2. Sottomette il messaggio al motore di validazione applicativa (ValidationManager)
-      validationManager.validateMessage(message);
-
-      // 3. Pianifica l'invio della conferma di ricezione (ACK)
-      eventBus.fireEvent(new MessageToAckEvent(contactId, message.getId()));
-  }
-  ```
-
-##### 7. Conferma di Ricezione (`Ack`)
-- **Scrittura**: Il membro esistente invia l'ACK via `recordWriter.writeAck(ack)` ottenuto da `db.getAck(txn, contactId)`.
-- **Lettura**: L'applicante riceve l'ACK e `IncomingSession` esegue `db.receiveAck(txn, contactId, ack)`. Il DB aggiorna lo stato del messaggio segnandolo come **consegnato con successo** al peer.
-
----
-
-### FASE 3: Ricezione, Validazione e Notifica UI (Membro Esistente)
-
-Quando il messaggio arriva sullo smartphone del membro esistente, il motore Bramble lo passa all'hook di validazione applicativo.
-
-#### Chiamate di Codice:
-
-1. **Intercettazione del Messaggio (`CommunityMessageHook.java`)**:
-   ```java
-   // File: briar-core/.../community/CommunityMessageHook.java
-
-   @Override
-   protected DeliveryAction incomingMessage(Transaction txn, Message m, BdfList body, BdfDictionary meta)
-           throws DbException, FormatException {
-
-       int msgType = body.getList(0).getInt(0);
-
-       if (msgType == MSG_TYPE_ONBOARDING_REQUEST) {
-           return processIncomingOnboardingRequest(txn, m, body);
-       }
-
-       return DeliveryAction.ACCEPT;
-   }
-   ```
-
-2. **Verifica Crittografica della Firma dell'Applicante**:
-   ```java
-   private DeliveryAction processIncomingOnboardingRequest(Transaction txn, Message m, BdfList body)
-           throws FormatException {
-
-       BdfList bodyToSign = body.getList(0);
-       byte[] signature = body.getRaw(1);
-
-       Author applicantAuthor = clientHelper.parseAndValidateAuthor(bodyToSign.getList(1));
-
-       try {
-           // Verifica che la firma corrisponda alla chiave pubblica dell'autore applicante
-           clientHelper.verifySignature(
-               signature,
-               "org.briarproject.briar.community/ONBOARDING_REQUEST",
-               bodyToSign,
-               applicantAuthor.getPublicKey()
-           );
-       } catch (GeneralSecurityException e) {
-           // Firma non valida -> Rifiuta e cancella il messaggio malevolo
-           return DeliveryAction.REJECT;
-       }
-
-       // Estrazione dei topic scelti
-       List<String> topics = bodyToSign.getList(2).getStringList();
-       OnboardingRequest request = new OnboardingRequest(applicantAuthor, topics, m.getTimestamp());
-
-       // Notifica sull'EventBus interno per aggiornare l'interfaccia utente
-       eventBus.fireEvent(new OnboardingRequestReceivedEvent(request));
-
-       return DeliveryAction.ACCEPT;
-   }
-   ```
-
-3. **Notifica sull'Interfaccia Utente (Android UI)**:
-   Il ViewModel dell'app nativa in ascolto sull'event bus cattura l'evento e mostra la notifica all'utente:
-   ```java
-   // File: briar-android/.../community/OnboardingRequestsViewModel.java
-
-   @EventListener
-   public void onOnboardingRequestReceived(OnboardingRequestReceivedEvent event) {
-       OnboardingRequest req = event.getRequest();
-       // Aggiorna LiveData per la RecyclerView delle richieste pendenti
-       pendingRequestsLiveData.postValue(req);
+       return clientHelper.createMessage(communityTopicGroupId, timestamp, clientHelper.toByteArray(fullBody));
    }
    ```
 
 ---
 
-### FASE 4: Approvazione da parte del Membro Esistente (`FULL_MEMBER`)
+### FASE 2: Trasporto P2P BSS ed Emissione degli Endorsement (`TrustEndorsementMessage`)
 
-Il membro esistente legge i dettagli dell'applicante nella schermata d'approvazione e clicca su **"Applica Approvazione"**.
+Non appena lo smartphone di Alice entra nel raggio di un membro della comunità (Bob), le sessioni BSS (`IncomingSession` e `DuplexOutgoingSession`) scambiano i record.
 
-#### Chiamate di Codice:
+#### Chiamate di Codice per l'Invio dell'Endorsement (Bob):
 
-1. **Generazione del Messaggio di Risposta (`OnboardingResponse`)**:
+1. **Generazione del Messaggio di Attestazione di Fiducia (`TrustEndorsementMessage`)**:
    ```java
    // File: briar-core/.../community/CommunityOnboardingManagerImpl.java
 
-   public void approveOnboardingRequest(Author applicantAuthor) throws DbException, FormatException, GeneralSecurityException {
+   public void endorseApplicantNode(Author applicantAuthor) 
+           throws DbException, FormatException, GeneralSecurityException {
 
        long timestamp = System.currentTimeMillis();
-       Author localApprover = identityManager.getLocalAuthor();
+       Author localFullMember = identityManager.getLocalAuthor(); // Bob (FULL_MEMBER)
 
-       BdfList responseBodyToSign = BdfList.of(
-           MSG_TYPE_ONBOARDING_RESPONSE,             // Integer: 1 per Onboarding Response
-           clientHelper.toList(applicantAuthor),     // Autore approvato
-           true,                                     // Boolean: Approved = true
-           clientHelper.toList(localApprover),       // Autore che approva (FULL_MEMBER)
+       BdfList bodyToSign = BdfList.of(
+           MSG_TYPE_TRUST_ENDORSEMENT,                 // Integer: 2
+           clientHelper.toList(applicantAuthor),       // Alice (Applicante)
+           clientHelper.toList(localFullMember),      // Bob (Firmante FULL_MEMBER)
            timestamp
        );
 
-       // Firma del messaggio da parte del membro autorizzato
        byte[] signature = clientHelper.sign(
-           "org.briarproject.briar.community/ONBOARDING_RESPONSE",
-           responseBodyToSign,
-           localApprover.getPrivateKey()
+           "org.briarproject.briar.community/TRUST_ENDORSEMENT",
+           bodyToSign,
+           localFullMember.getPrivateKey()
        );
 
-       BdfList fullResponseBody = BdfList.of(responseBodyToSign, signature);
-       Message responseMessage = clientHelper.createMessage(
+       BdfList fullResponseBody = BdfList.of(bodyToSign, signature);
+       Message endorsementMessage = clientHelper.createMessage(
            communityTopicGroupId,
            timestamp,
            clientHelper.toByteArray(fullResponseBody)
        );
 
-       // Salvataggio nel DB locale con shared = true per la trasmissione P2P
        db.runInTransaction(false, txn -> {
-           clientHelper.addLocalMessage(txn, responseMessage, new BdfDictionary(), true);
+           clientHelper.addLocalMessage(txn, endorsementMessage, new BdfDictionary(), true);
        });
    }
    ```
 
 ---
 
-### FASE 5: Ricezione dell'Approvazione e Promozione del Nuovo Membro
+### FASE 3: Ricezione degli Endorsement e Incremento Quorum (Alice)
 
-Il messaggio di risposta naviga sulla rete BSS e viene consegnato allo smartphone del nuovo membro.
+Quando Alice riceve un `TrustEndorsementMessage` via BSS, l'hook di messaggio elabora la firma ed aggiorna i metadati locales del quorum.
 
 #### Chiamate di Codice:
 
-1. **Verifica dell'Autorità del Firmante**:
+1. **Elaborazione dell'Endorsement in `CommunityMessageHook.java`**:
    ```java
-   // File: briar-core/.../community/CommunityMessageHook.java (sul dispositivo del nuovo membro)
+   // File: briar-core/.../community/CommunityMessageHook.java
 
-   if (msgType == MSG_TYPE_ONBOARDING_RESPONSE) {
+   if (msgType == MSG_TYPE_TRUST_ENDORSEMENT) {
        BdfList bodyToSign = body.getList(0);
        byte[] signature = body.getRaw(1);
 
-       Author approver = clientHelper.parseAndValidateAuthor(bodyToSign.getList(3));
+       Author approver = clientHelper.parseAndValidateAuthor(bodyToSign.getList(2));
 
-       // Riconoscimento dell'approvatore: verifica che sia un FULL_MEMBER riconosciuto
+       // 1. Verifica che l'approvatore sia riconosciuto come FULL_MEMBER
        if (trustManager.getTrustTier(approver.getId()) == TrustTier.FULL_MEMBER) {
 
            Author applicant = clientHelper.parseAndValidateAuthor(bodyToSign.getList(1));
 
-           // Se la risposta riguarda me stesso, esegui la PROMOZIONE!
+           // 2. Se l'endorsement riguarda l'utente locale (Alice)
            if (applicant.getId().equals(identityManager.getLocalAuthor().getId())) {
-
-               // Promozione nel database cifrato localmente
-               trustManager.promoteToFullMember(applicant.getId());
-
-               // Invia evento di promozione per aggiornare la UI
-               eventBus.fireEvent(new TrustTierChangedEvent(TrustTier.FULL_MEMBER));
+               
+               // 3. Registra l'endorsement nel DB ed esegui la verifica del quorum
+               trustManager.registerIncomingEndorsement(approver.getId());
            }
        }
    }
    ```
 
-2. **Promozione della Fiducia in `TrustManagerImpl`**:
+2. **Registrazione dell'Endorsement in `TrustManagerImpl.java`**:
    ```java
    // File: bramble-core/.../trust/TrustManagerImpl.java
 
-   public void promoteToFullMember(AuthorId authorId) throws DbException {
-       Settings settings = new Settings();
-       settings.put("trustTier", "FULL_MEMBER");
+   public synchronized void registerIncomingEndorsement(AuthorId approverId) throws DbException {
+       Settings settings = settingsManager.getSettings("community.trust");
 
-       // Scrittura nel DB cifrato
-       settingsManager.mergeSettings(settings, "community.trust");
-       LOG.info("PROMOZIONE COMPLETATA: Il nodo " + authorId + " ora è FULL_MEMBER!");
+       String authors = settings.getOrDefault("endorsementAuthors", "");
+       List<String> authorList = new ArrayList<>(Arrays.asList(authors.split(",")));
+
+       // Previene voti doppi dallo stesso membro
+       if (!authorList.contains(approverId.getBytes())) {
+           authorList.add(approverId.getBytes());
+           int newCount = authorList.size();
+
+           Settings update = new Settings();
+           update.put("endorsementCount", String.valueOf(newCount));
+           update.put("endorsementAuthors", String.join(",", authorList));
+
+           // Imposta lo sponsor iniziale se non ancora presente
+           if (settings.get("sponsorAuthorId") == null) {
+               update.put("sponsorAuthorId", approverId.getBytes());
+           }
+
+           settingsManager.mergeSettings(update, "community.trust");
+
+           // VALUTAZIONE ISTANTANEA DEL QUORUM E DEI REQUISITI
+           evaluatePromotionEligibility();
+       }
    }
    ```
 
-3. **Notifica UI al Nuovo Membro**:
-   L'app mobile del nuovo membro aggiorna l'interfaccia, sblocca la pubblicazione illimitata di post e mostra il messaggio:
-   🎉 *"La tua richiesta è stata approvata da un membro della comunità! La modalità Sandbox è stata disattivata."*
+---
+
+### FASE 4: Valutazione del Quorum Multicriterio e Promozione
+
+Quando scade il timer delle 72 ore o quando arriva un nuovo endorsement, la funzione `evaluatePromotionEligibility()` verifica che tutti i 5 requisiti siano soddisfatti prima di passare a `FULL_MEMBER`.
+
+```java
+// File: bramble-core/.../trust/TrustManagerImpl.java
+
+public synchronized boolean evaluatePromotionEligibility() throws DbException {
+    Settings settings = settingsManager.getSettings("community.trust");
+
+    if ("FULL_MEMBER".equals(settings.get("trustTier"))) return true;
+
+    long startTime = Long.parseLong(settings.getOrDefault("sandboxStartTime", "0"));
+    int endorsementCount = Integer.parseInt(settings.getOrDefault("endorsementCount", "0"));
+    int postsCount = Integer.parseInt(settings.getOrDefault("validPostsCount", "0"));
+    int abuseFlags = Integer.parseInt(settings.getOrDefault("abuseFlagCount", "0"));
+    String sponsorId = settings.get("sponsorAuthorId");
+
+    // VERIFICA DEI 5 REQUISITI CONCORRENTI
+    boolean timeLockPassed = (System.currentTimeMillis() - startTime) >= 3 * 86_400_000L; // 72h
+    boolean quorumPassed = endorsementCount >= 3;                                          // K=3
+    boolean sponsorPresent = sponsorId != null && !sponsorId.isEmpty();
+    boolean activityPassed = postsCount >= 1;
+    boolean cleanRecord = abuseFlags == 0;
+
+    if (timeLockPassed && quorumPassed && sponsorPresent && activityPassed && cleanRecord) {
+        // PROMOZIONE!
+        executePromotionToFullMember();
+        return true;
+    }
+
+    return false;
+}
+```
 
 ---
 
-## 3. Riepilogo dei Vantaggi del Flusso P2P BSS
+## 3. Vantaggi del Flusso Multicriterio
 
-1. **Sicurezza Crittografica Inconfutabile**: Tutte le richieste e le approvazioni sono firmate asimmetricamente via Ed25519 e verificate con le chiavi pubbliche incluse nel protocollo.
-2. **Resilienza alle Disconnessioni (DTN)**: Non è richiesta la presenza contemporanea online di tutti i nodi. L'approvazione fluisce in modalità *Store-Carry-and-Forward* appena due nodi si incontrano.
-3. **Piena Integrazione con Bramble**: Il meccanismo usa le primitive native di Briar (`ClientHelper`, `BdfList`, `BdfIncomingMessageHook`, `SettingsManager`), senza introdurre librerie esterne.
+1. **Eliminazione dell'Approvazione ad Arbitrio Singolo**: Un singolo utente compromesso non può promuovere autonomamente un nodo malevole.
+2. **Protezione dalle Infiltrazioni Lampo**: Il vincolo temporale di 72 ore unito alla necessità di incontrare 3 membri distinti neutralizza gli attacchi Sybil.
+3. **Piena Integrazione Native Bramble**: Sfrutta la messaggistica BDF, l'EventBus locale e le `Settings` cifrate per garantire resilienza senza dipendenze esterne.
