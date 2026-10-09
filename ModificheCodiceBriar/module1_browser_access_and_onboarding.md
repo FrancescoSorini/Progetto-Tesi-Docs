@@ -741,3 +741,72 @@ Quando due dispositivi (es. Alice in Sandbox e Bob `FULL_MEMBER`) stabiliscono u
 3. Alice accetta l'offerta (`REQUEST`) e riceve il descrittore del Gruppo.
 4. L'app di Alice aggiorna `CommunityTopicManager`, rendendo il nuovo Topic immediatamente visibile nella UI senza bisogno di alcuna connessione ad un server centrale.
 
+**FONTI**
+1. Fonti Ufficiali del Progetto Briar / Bramble Protocol
+•
+Repository Ufficiale e Codice Sorgente di Briar:
+◦
+Fonte: Briar Project Code Repository (GitLab)
+◦
+Riferimento per il Modulo: Mappatura dei package nativi org.briarproject.bramble.account.AccountManagerImpl, org.briarproject.bramble.trust.TrustManagerImpl e org.briarproject.briar.android.account.SetupViewModel.
+•
+Specifiche del Protocollo Bramble (Bramble Sync Protocol - BSS & BDF):
+◦
+Fonte: Briar / Bramble Architectural Specifications
+◦
+Riferimento per il Modulo:
+▪
+BDF (Bramble Data Format): Formato di serializzazione binaria strutturata (BdfList, BdfDictionary).
+▪
+BSS (Bramble Sync Protocol): Motore di sincronizzazione epidemica basato su gruppi (GroupId) e visibilità dei messaggi (GroupVisibility).
+•
+Algoritmi Crittografici per le Identità (Author / Ed25519):
+◦
+Fonte: RFC 8032 - Edwards-Curve Digital Signature Algorithm (Ed25519)
+◦
+Riferimento per il Modulo: Generazione delle coppie di chiavi asimmetriche dell'utente (IdentityManager.createIdentity) e firma/verifica dei messaggi BDF con ClientHelper.sign e ClientHelper.verifySignature.
+2. Fonti Ufficiali Android Jetpack & Framework Android SDK
+•
+Android ViewModel, LiveData & State Flow:
+◦
+Fonte: Android Developers - Architecture Components (ViewModel)
+◦
+Riferimento per il Modulo: Gestione del wizard di primo avvio SetupViewModel.java e transizioni tra frammenti (AuthorNameFragment, SelectTopicsFragment).
+•
+Deep Links & Custom Schemes in Android (briar://):
+◦
+Fonte: Android Developers - Handling Android App Links and Deep Links
+◦
+Riferimento per il Modulo: Intercettazione ed auto-compilazione di pseudonimo e topic via URI scheme briar://community-onboard?pseudonym=...&topics=....
+•
+Gestione Impostazioni Cifrate di Bramble (SettingsManager):
+◦
+Fonte: Briar/Bramble Core Settings API Reference
+◦
+Riferimento per il Modulo: Scrittura e lettura persistente nel database cifrato H2/SQLite del namespace "community.trust".
+3. Fonti Accademiche e Modelli di Sicurezza P2P (Sybil Defense & Quorum)
+•
+Prevenzione degli Attacchi Sybil nelle Reti Ad-Hoc / P2P:
+◦
+Fonte Accademica: Douceur, J. R. (2002). "The Sybil Attack". International Workshop on Peer-to-Peer Systems (IPTPS). Springer, Berlin, Heidelberg.
+◦
+Riferimento per il Modulo: Giustifica scientifica per l'eliminazione dell'approvazione a singolo membro e l'introduzione dei vincoli di Time-Lock (3 giorni) e Quorum di Prossimità Multisponsor (K=3 endorsement distinti).
+•
+Sistemi di Reputazione e Threshold Cryptography nelle Reti DTN:
+◦
+Fonte Accademica: Resnick, P., et al. (2000). "Reputation systems". Communications of the ACM, 43(12), 45-48.
+◦
+Riferimento per il Modulo: Modellazione dei parametri di valutazione della Sandbox (validPostsCount, abuseFlagCount, endorsementCount) in TrustManagerImpl.java.
+4. Fonti per il Server Web Embedded e la Scoperta dei Topic
+•
+JetBrains Ktor Embedded HTTP Engine:
+◦
+Fonte: JetBrains Ktor Framework Official Documentation
+◦
+Riferimento per il Modulo: Modulo server EmbeddedWebGateway.kt per l'erogazione asincrona della Landing Page HTML5 e delle API JSON /api/topics.
+•
+Android Local-Only Hotspot API (WifiManager):
+◦
+Fonte: Android Developers Reference - WifiManager.startLocalOnlyHotspot
+◦
+Riferimento per il Modulo: Attivazione del punto d'accesso Wi-Fi locale per consentire la connessione dei browser sui telefoni dei nuovi utenti.

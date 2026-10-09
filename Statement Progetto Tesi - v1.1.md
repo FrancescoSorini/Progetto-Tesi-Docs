@@ -113,6 +113,40 @@ nativa:
     non vi è connessione Internet, l'invito viene importato direttamente
     nell'app nativa del nuovo utente.
 
+**Distribuzione dell'App in Assenza di Internet**
+
+Poiché il nuovo utente potrebbe non avere ancora installato l'app, la
+comunità deve poter distribuire il pacchetto di installazione senza
+dipendere da Internet. Si considerano le seguenti soluzioni:
+
+- **Punto Wi-Fi locale:** un nodo della comunità (ad esempio un router,
+  un laptop o un mini-computer) crea una rete locale e ospita una pagina
+  di onboarding e il pacchetto di installazione. Un QR code indica
+  l'indirizzo locale e può contenere anche i dati d'invito. Il nuovo
+  utente si collega alla rete, scarica il pacchetto e prosegue con
+  l'installazione. Questa è la modalità raccomandata per il prototipo.
+
+- **Trasferimento diretto o supporto rimovibile:** un membro può
+  trasferire il pacchetto tramite Bluetooth, Quick Share, cavo USB,
+  memoria USB-C/OTG o scheda di memoria. L'invito può essere trasferito
+  insieme al pacchetto oppure importato successivamente tramite QR code.
+
+- **Kit di distribuzione predisposto:** la comunità può conservare una
+  copia del pacchetto su un laptop, un mini-server, una chiavetta USB o
+  una scheda di memoria, pronta per scenari d'emergenza.
+
+Il pacchetto Android deve essere firmato con la chiave di distribuzione
+del progetto. La firma e un'impronta verificabile permettono di
+controllarne l'autenticità; Android può richiedere all'utente di
+autorizzare l'installazione dalla fonte utilizzata. Il QR code non
+contiene l'applicazione: ne indica la posizione nella rete locale o
+trasporta i dati d'invito. Una PWA può fornire un'interfaccia offline
+solo se è stata caricata o installata in precedenza e non sostituisce
+l'app nativa per le funzioni DTN. La distribuzione su iOS richiede un
+canale specifico della piattaforma e non è equivalente al trasferimento
+di un APK; per il prototipo, la distribuzione offline è quindi
+prioritariamente prevista per Android.
+
 **Flusso di Richiesta d'Ingresso e Restrizioni Iniziali**
 
 - **Identità e Risorse:** Una volta installata l'app, il dispositivo
