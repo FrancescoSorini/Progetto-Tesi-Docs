@@ -1,6 +1,6 @@
-# Documentazione Tecnica: Gestione Rete Wi-Fi Hotspot, Captive Portal e Distribuzione Offline APK
+# Gestione Rete Wi-Fi Hotspot, Captive Portal e Distribuzione Offline APK
 
-Questo documento descrive in dettaglio l'architettura, i casi d'uso ed il codice sorgente per la **gestione della rete Wi-Fi Hotspot locale**, l'attivazione del **Captive Portal** (reindirizzamento automatico DNS/HTTP) e la **distribuzione offline del file `.apk`** dell'applicazione Android in contesti privi di connessione Internet.
+Questo documento descrive l'architettura, i casi d'uso ed lo psseudocodice sorgente per la **gestione della rete Wi-Fi Hotspot locale**, l'attivazione del **Captive Portal** (reindirizzamento automatico DNS/HTTP) e la **distribuzione offline del file `.apk`** dell'applicazione Android in contesti privi di connessione Internet.
 
 ---
 
@@ -16,13 +16,13 @@ Per consentire a qualsiasi smartphone (anche non ancora provvisto dell'applicazi
  │  1. MODULO HOTSPOT ANDROID (`LocalHotspotManager.kt`)                       │
  │     └─ WifiManager.startLocalOnlyHotspot() -> Rete Wi-Fi "Briar_Emergenza"  │
  │                                                                             │
- │  2. SERVER DNS FAKE (`CaptivePortalDnsServer.kt`)                            │
+ │  2. SERVER DNS FAKE (`CaptivePortalDnsServer.kt`)                           │
  │     └─ UDP Port 53: dirotta qualsiasi dominio -> IP 192.168.43.1            │
  │                                                                             │
  │  3. SERVER WEB EMBEDDED (`EmbeddedWebGateway.kt`)                           │
- │     ├─ Port 8080: Servizio Landing Page HTML5 & Captive Portal Redirect    │
- │     ├─ GET /download/briar-community.apk -> Stream APK ad alta velocità   │
- │     └─ GET /api/topics & POST /api/onboard/draft -> Pre-compilazione      │
+ │     ├─ Port 8080: Servizio Landing Page HTML5 & Captive Portal Redirect     │
+ │     ├─ GET /download/briar-community.apk -> Stream APK ad alta velocità     │
+ │     └─ GET /api/topics & POST /api/onboard/draft -> Pre-compilazione        │
  └─────────────────────────────────────────────────────────────────────────────┘
                                        │
                     Rete Wi-Fi Locale (Wi-Fi 2.4 / 5 GHz)
@@ -33,7 +33,7 @@ Per consentire a qualsiasi smartphone (anche non ancora provvisto dell'applicazi
  ├─────────────────────────────────────────────────────────────────────────────┤
  │ 1. Connessione al Wi-Fi o scansione QR Code                                 │
  │ 2. Il sistema operativo rileva il Captive Portal ed APRE LA PAGINA WEB      │
- │ 3. Scarica l'APK a 50-100 Mbps ed avvia il wizard nativo col Deep Link       │
+ │ 3. Scarica l'APK ed avvia il wizard nativo col Deep Link                    │
  └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -45,35 +45,26 @@ Per consentire a qualsiasi smartphone (anche non ancora provvisto dell'applicazi
 * **Attori**: Nuovo Utente (*Alice*), Manifesto/Cartello d'Emergenza con QR Code.
 * **Pre-condizioni**: Alice si trova nell'area sinistrata, non ha l'app installata e non ha connessione cellulare. Un membro della comunità (*Marco*) ha posizionato il proprio telefono vicinale in modalità Gateway.
 * **Flusso Principale**:
-  1. Alice inquadra il QR Code sul manifesto. Il QR contiene le credenziali Wi-Fi e l'URL locale (`WIFI:S:Briar_Emergenza;T:nopass;;URL:http://192.168.43.1:8080;`).
+  1. Alice inquadra il QR Code sul manifesto. Il QR contiene le credenziali Wi-Fi e l'URL locale.
   2. Lo smartphone di Alice si connette alla rete Wi-Fi dell'Hotspot di Marco.
-  3. Il sistema Android/iOS di Alice invia una richiesta DNS per verificare Internet (es. `connectivitycheck.gstatic.com`).
+  3. Il sistema Android di Alice invia una richiesta DNS per verificare Internet (es. `connectivitycheck.gstatic.com`).
   4. Il **Server DNS Fake** di Marco intercetta la richiesta e risponde fornendo l'IP locale `192.168.43.1`.
   5. Il sistema operativo di Alice apre **automaticamente la schermata Captive Portal** con la Landing Page HTML5.
   6. Alice legge le informazioni, seleziona i topic di interesse (`#emergenza-sanitaria`, `#soccorsi`) e digita lo pseudonimo "Alice".
-  7. Alice clicca **"Scarica App Android (.apk)"**: il file da 30 MB viene scaricato in 2 secondi.
+  7. Alice clicca **"Scarica App Android (.apk)"**
   8. Alice installa l'APK e clicca sul pulsante "Avvia App": il Deep Link pre-compila automaticamente il wizard e l'account viene creato in modalità **Sandbox (`PROBATION`)**.
 
 ---
 
 ### **Caso d'Uso 2: Incontro Diretto tra Membro Esistente e Nuovo Membro (Invito con Sponsor)**
 * **Attori**: Nuovo Utente (*Alice*), Membro Esistente (*Bob - FULL_MEMBER*).
-* **Pre-condizioni**: Bob ed Alice si incontrano sul campo. Bob vuole invitare Alice ed essere il suo sponsor.
+* **Pre-condizioni**: Bob ed Alice si incontrano. Bob vuole invitare Alice ed essere il suo sponsor.
 * **Flusso Principale**:
   1. Bob apre l'app Briar, va nella sezione *"Invita Nuovo Membro"* e clicca *"Attiva Gateway Hotspot e Mostra QR"*.
-  2. L'app di Bob attiva l'Hotspot Wi-Fi locale e mostra sul display un QR Code d'invito personalizzato (`briar://community-invite/?sponsor=BobAuthorId&group=CommunityGroupId`).
+  2. L'app di Bob attiva l'Hotspot Wi-Fi locale e mostra sul display un QR Code d'invito personalizzato.
   3. Alice inquadra il QR Code dal telefono di Bob.
   4. Il telefono di Alice scarica l'APK dall'Hotspot di Bob.
   5. Quando Alice apre l'app nativa, l'invito registra automaticamente l'AuthorId di Bob come **`sponsorAuthorId`** nel database cifrato di Alice, soddisfacendo il **Requisito n. 2 del Quorum di Prossimità**.
-
----
-
-### **Caso d'Uso 3: Consultazione da Browser per Dispositivi Non-Android (iPhone / PC)**
-* **Attori**: Utente con iPhone/iOS o laptop PC.
-* **Flusso Principale**:
-  1. L'utente con dispositivo iOS si connette al Wi-Fi dell'Hotspot.
-  2. Si apre il Captive Portal Apple (`captive.apple.com`).
-  3. L'utente può consultare le notizie pubbliche di emergenza, la lista dei punti di soccorso ed i topic attivi direttamente via browser web in sola lettura, pur non potendo installare l'APK Android.
 
 ---
 
@@ -422,13 +413,6 @@ Per abilitare l'attivazione dell'Hotspot e del Server HTTP/DNS, il file `Android
 ```
 
 ---
-
-## 5. Sintesi ed Evidenze
-
-1. **Nessun Prerequisito Esterno**: L'intera architettura funziona in modalità **100% offline**, senza bisogno di connessione cellulare, router esterni o accesso a Google Play Store.
-2. **Download ad Alta Velocità**: Il download dell'APK avviene su canale Wi-Fi diretto erogando velocità comprese tra 50 e 100 Mbps (30 MB trasferiti in 2-3 secondi).
-3. **User Experience Senza Attrito**: Il reindirizzamento automatizzato via Captive Portal apre la pagina direttamente sullo schermo dell'utente appena questi si connette al Wi-Fi o inquadra il QR Code.
-
 
 **FONTI**
 1. Documentazione Ufficiale Android (Google Android Developer Reference)

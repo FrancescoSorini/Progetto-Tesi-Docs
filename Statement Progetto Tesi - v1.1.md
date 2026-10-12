@@ -109,9 +109,9 @@ nativa:
     dell'applicazione nativa necessaria per la partecipazione effettiva.
 
 2.  **Invito diretto:** A seguito dell'incontro con un membro già
-    inserito, questi fornisce un indirizzo web o un QR code d'invito. Se
-    non vi è connessione Internet, l'invito viene importato direttamente
-    nell'app nativa del nuovo utente.
+    inserito, questi fornisce un indirizzo web o un QR code d'invito. Quest'invito
+    nato da un incontro di persona costituisce uno "sponsor" che facilita
+    l'ingresso, ma non concede automaticamente tutti i privilegi.
 
 **Distribuzione dell'App in Assenza di Internet**
 
@@ -172,6 +172,8 @@ prioritariamente prevista per Android.
     introdurre nuovi nodi;
 
   - Accesso ristretto a una sola parte delle informazioni pubblicate.
+
+  - Periodo minimo di permanenza nella comunità (es. 3 giorni)
 
 - **Promozione o Isolamento:** Se dopo un periodo di osservazione
   l'utente e i suoi contributi vengono valutati positivamente tramite il

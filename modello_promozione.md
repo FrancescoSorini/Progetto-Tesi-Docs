@@ -1,6 +1,6 @@
 # Modello di Promozione a FULL_MEMBER e Requisiti di Fiducia della Sandbox
 
-Questo documento definisce in dettaglio il **Modello di Promozione e Fiducia** per il passaggio di un nodo dallo stato di Sandbox (**`PROBATION`**) a quello di membro effettivo (**`FULL_MEMBER`**), risolvendo la discrepanza tra approvazione a singolo nodo e **Quorum di Prossimità**.
+Questo documento definisce il **Modello di Promozione e Fiducia** per il passaggio di un nodo dallo stato di Sandbox (**`PROBATION`**) a quello di membro effettivo (**`FULL_MEMBER`**), risolvendo la discrepanza tra approvazione a singolo nodo e **Quorum di Prossimità**.
 
 ---
 
@@ -12,16 +12,16 @@ In una rete ad-hoc per scenari di emergenza e censura, dare fiducia a un nuovo n
 * **Collusione a Singolo Nodo**: Un solo membro compromesso che approva istantaneamente nodi malevoli.
 
 Pertanto, l'uscita dalla Sandbox **non può dipendere da un singolo evento o da un solo membro**, ma deve derivare da un **Modello di Valutazione Ibrido (Multicriterio)** basato su:
-1. **Tempo e Permanenza** (*Time-Lock*)
-2. **Quorum di Prossimità Multisponsor** (*Multi-Party Endorsement*)
-3. **Incontri Fisici Diversificati** (*Physical Encounter Diversity*)
-4. **Attività Utile e Comportamento Pulito** (*Good Standing & Activity*)
+1. **Tempo e Permanenza** 
+2. **Quorum di Prossimità Multisponsor**
+3. **Incontri Fisici Diversificati** 
+4. **Attività Utile e Comportamento Pulito**
 
 ---
 
 ## 2. Modello dei Requisiti Minimi per la Promozione
 
-Per poter passare dallo stato `PROBATION` a `FULL_MEMBER`, il nodo di un nuovo utente deve **soddisfare TUTTI i seguenti 5 requisiti concorrenti**:
+Per poter passare dallo stato `PROBATION` a `FULL_MEMBER`, il nodo di un nuovo utente deve **soddisfare TUTTI i seguenti 5 requisiti concorrenti** (i valori per la permanenza minima, il quorum di prossimità e la diversità di incontri non sono da intendersi fissi ma modificabili in base al contesto e/o necessità):
 
 ```
  ┌─────────────────────────────────────────────────────────────────────────┐
