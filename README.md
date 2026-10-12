@@ -1,3 +1,11 @@
+**Modifiche Codice Briar**
+Include spiegazione modulo di accesso e dettagli sulla comunicazione per l'onboarding
+
+**Limiti HTML**
+Spiega come mai non si può avere una web app per sfruttare a pieno le funzionalità di connessione android
+
+**Modello di Promozione**
+Criteri teorici per passare da nuovo utente appena entrato a FULL MEMBER capace di sfruttare tutte le capacità dell'applicazione
 **IMPORTANTE**
 
 **1) Nuovo nodo entrante autonomamente**  
