@@ -2,11 +2,9 @@
 
 Questo documento fornisce un'analisi dettagliata e rigorosa della natura e del livello di **affidabilità (*Reliability*)** offerti dalla libreria **Bramble** (`org.briarproject.bramble`), il framework di rete P2P/DTN su cui si basa l'applicazione **Briar**.
 
-Ogni affermazione ed estrapolazione tecnica riportata in questo documento è affiancata dalla relativa **fonte ufficiale** (codice sorgente del repository Briar, specifiche del protocollo Bramble, standard IETF o letteratura scientifica di riferimento).
-
 ---
 
-## 1. Risposta Sintetica ed Inquadramento Teorico
+## 1. Inquadramento Teorico
 
 I protocolli della libreria Bramble **implementano una comunicazione AFFIDABILE (*Reliable Delivery*)** `[Fonte: Briar Protocol Architecture Specifications - BSS Protocol]`.
 
