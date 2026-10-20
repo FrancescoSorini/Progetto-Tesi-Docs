@@ -2,8 +2,6 @@
 
 Questo documento costituisce lo studio architetturale dedicato esclusivamente alla **gestione, scoperta e sottoscrizione dei Topic d'interesse** per un'applicazione di giornalismo partecipativo P2P in contesti di emergenza.
 
-Il documento analizza nel dettaglio i vari approcci P2P/DTN, ne spiega la matematica ed i meccanismi interni, associa **ogni affermazione alla relativa fonte ufficiale o accademica**, e dimostra rigorosamente perché la soluzione basata su **Filtri di Bloom Epidemici** costituisce la scelta architetturale ottimale.
-
 ---
 
 ## 1. Inquadramento del Problema: La Gestione dei Topic in Reti Ad-Hoc
