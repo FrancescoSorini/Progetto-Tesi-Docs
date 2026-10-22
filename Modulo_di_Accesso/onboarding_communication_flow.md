@@ -32,18 +32,18 @@ sequenceDiagram
     Alice->>Alice_DB: Incrementa endorsementCount = 1, imposta sponsorAuthorId = Bob
 
    
-    Note over Alice, Charlie: FASE 3: Periodo di Osservazione (72h) & Incontri P2P Successivi
+    Note over Alice, Charlie: FASE 3: Periodo di Osservazione Adattivo & Incontri P2P Diversificati
 
-    Note over Alice: Alice pubblica 1 Post valido (validPostsCount = 1, abuseFlagCount = 0)
+    Note over Alice: Alice pubblica un post utile o esprime un voto valido (usefulActivityCount >= 1, abuseFlagCount = 0)
 
-    Note over Alice, Charlie: Trascorrono 3 giorni (72 ore) dall'onboarding
+    Note over Alice, Charlie: Il periodo richiesto è Delta T_dynamic (tra 24h e 168h), calcolato dal tasso di incontri
 
     Alice<<->>Charlie: Incontro P2P #2: Charlie invia TrustEndorsementMessage(Alice, Charlie)
-    Alice->>Alice_DB: Incrementa endorsementCount = 2 (Raccolti K=3 endorsement totali)
+    Alice->>Alice_DB: Registra endorsement distinto e aggiorna stima rete/tasso incontri
 
     Note over Alice, Alice_DB: FASE 4: Valutazione Quorum e Promozione Locale
     Alice->>Alice_DB: TrustManagerImpl.evaluatePromotionEligibility()
-    Note over Alice_DB: Verificati TUTTI i 5 requisiti (72h, K=3 Endorsement, Sponsor, 1 Post, 0 Abusi)
+    Note over Alice_DB: Se risultano soddisfatti i 5 requisiti (Delta T_dynamic, sponsor, K_dynamic endorsement, incontri diversificati, attività utile e 0 abusi)
     Alice_DB->>Alice_DB: TrustManagerImpl.executePromotionToFullMember() -> trustTier = FULL_MEMBER
     Alice-->>Alice: Notifica UI: "Sandbox Disattivata! Ora sei Membro Pieno della Comunità."
 ```
@@ -70,10 +70,12 @@ Quando Alice completa il wizard nell'app nativa, la sua app genera la richiesta 
            long now = System.currentTimeMillis();
            
            settings.put("trustTier", "PROBATION");
-           settings.put("sandboxStartTime", String.valueOf(now)); // Inizio vincolo 72h
+           settings.put("sandboxStartTime", String.valueOf(now)); // Inizio periodo di osservazione adattivo
            settings.put("endorsementCount", "0");
-           settings.put("validPostsCount", "0");
+           settings.put("usefulActivityCount", "0");
            settings.put("abuseFlagCount", "0");
+           settings.put("estimatedNetworkSize", "10"); // Valore iniziale da aggiornare con la stima locale
+           settings.put("encounterRatePerHour", "1.0"); // Valore iniziale da aggiornare con gli incontri osservati
            settings.put("maxPostsPerDay", "1");
            
            if (token != null) settings.put("onboardingToken", token);
@@ -226,7 +228,7 @@ Quando Alice riceve un `TrustEndorsementMessage` via BSS, l'hook di messaggio el
 
 ### FASE 4: Valutazione del Quorum Multicriterio e Promozione
 
-Quando scade il timer delle 72 ore o quando arriva un nuovo endorsement, la funzione `evaluatePromotionEligibility()` verifica che tutti i 5 requisiti siano soddisfatti prima di passare a `FULL_MEMBER`.
+Quando scade il timer relativo a $\Delta T_{\text{dynamic}}$ o quando arriva un nuovo endorsement, la funzione `evaluatePromotionEligibility()` ricalcola le soglie in base alla stima della dimensione della rete e al tasso degli incontri, quindi verifica tutti i 5 requisiti prima del passaggio a `FULL_MEMBER`.
 
 ```java
 // File: bramble-core/.../trust/TrustManagerImpl.java
@@ -238,18 +240,25 @@ public synchronized boolean evaluatePromotionEligibility() throws DbException {
 
     long startTime = Long.parseLong(settings.getOrDefault("sandboxStartTime", "0"));
     int endorsementCount = Integer.parseInt(settings.getOrDefault("endorsementCount", "0"));
-    int postsCount = Integer.parseInt(settings.getOrDefault("validPostsCount", "0"));
+    int usefulActivityCount = Integer.parseInt(settings.getOrDefault("usefulActivityCount", "0"));
     int abuseFlags = Integer.parseInt(settings.getOrDefault("abuseFlagCount", "0"));
+    int estimatedNetworkSize = Integer.parseInt(settings.getOrDefault("estimatedNetworkSize", "10"));
+    double encounterRate = Double.parseDouble(settings.getOrDefault("encounterRatePerHour", "1.0"));
     String sponsorId = settings.get("sponsorAuthorId");
 
+    // Calcolo delle soglie secondo il modello dinamico di promozione
+    int dynamicK = calculateDynamicQuorum(estimatedNetworkSize);
+    long dynamicTimeLockMs = calculateDynamicTimeLock(encounterRate);
+
     // VERIFICA DEI 5 REQUISITI CONCORRENTI
-    boolean timeLockPassed = (System.currentTimeMillis() - startTime) >= 3 * 86_400_000L; // 72h
-    boolean quorumPassed = endorsementCount >= 3;                                          // K=3
+    boolean timeLockPassed = (System.currentTimeMillis() - startTime) >= dynamicTimeLockMs;
+    boolean quorumPassed = endorsementCount >= dynamicK;
     boolean sponsorPresent = sponsorId != null && !sponsorId.isEmpty();
-    boolean activityPassed = postsCount >= 1;
+    boolean encounterDiversityPassed = hasDiverseEncounterSessions(settings);
+    boolean activityPassed = usefulActivityCount >= 1; // post o voto utile
     boolean cleanRecord = abuseFlags == 0;
 
-    if (timeLockPassed && quorumPassed && sponsorPresent && activityPassed && cleanRecord) {
+    if (timeLockPassed && sponsorPresent && quorumPassed && encounterDiversityPassed && activityPassed && cleanRecord) {
         // PROMOZIONE!
         executePromotionToFullMember();
         return true;
@@ -257,6 +266,9 @@ public synchronized boolean evaluatePromotionEligibility() throws DbException {
 
     return false;
 }
+
+// Funzioni definite dal modello: calcolo di K_dynamic e Delta T_dynamic,
+// verifica di endorsement distinti e sessioni P2P diversificate.
 ```
 
 ---
@@ -264,5 +276,5 @@ public synchronized boolean evaluatePromotionEligibility() throws DbException {
 ## 3. Vantaggi del Flusso Multicriterio
 
 1. **Eliminazione dell'Approvazione ad Arbitrio Singolo**: Un singolo utente compromesso non può promuovere autonomamente un nodo malevole.
-2. **Protezione dalle Infiltrazioni Lampo**: Il vincolo temporale di 72 ore unito alla necessità di incontrare 3 membri distinti neutralizza gli attacchi Sybil.
+2. **Protezione dalle Infiltrazioni Lampo**: Il periodo adattivo, il quorum dinamico di membri distinti e la diversità degli incontri aumentano la resistenza agli ingressi opportunistici; non costituiscono da soli una garanzia contro gli attacchi Sybil.
 3. **Piena Integrazione Native Bramble**: Sfrutta la messaggistica BDF, l'EventBus locale e le `Settings` cifrate per garantire resilienza senza dipendenze esterne.

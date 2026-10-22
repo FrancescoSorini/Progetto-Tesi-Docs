@@ -115,7 +115,7 @@ Le autorizzazioni della comunità ed il livello di fiducia non vengono inseriti 
 1. **`SponsorshipCredential`**:
    Rilasciata dallo sponsor al momento della scansione del QR d'Invito Personale.
 2. **`CommunityMembershipCredential`**:
-   Rilasciata dal sistema al completamento dei 5 requisiti del Quorum Multicriterio ($K=3$ endorsement, 72 ore time-lock, attività, zero abusi).
+   Rilasciata al completamento dei 5 requisiti multicriterio di promozione: periodo di osservazione e quorum adattivi, sponsor, incontri P2P diversificati, attività utile e assenza di segnalazioni di abuso.
 3. **`ProofExportPackage`**:
    Quando un reportage viene esportato all'esterno della rete d'emergenza, il pacchetto contiene:
    * Il post originale con firma dell'autore (`did:key`).

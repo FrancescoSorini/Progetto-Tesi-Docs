@@ -13,7 +13,7 @@ Questo documento costituisce la **specifica formale del Modulo 1**, definendo i 
 * **RF-04 (Integrazione Deep Link Sicuro)**: Il form web deve generare un Deep Link Android (`briar://community-onboard?...`) per pre-compilare automaticamente lo pseudonimo ed i topic scelti nel wizard d'installazione.
 * **RF-05 (Profili Sandbox `PROBATION`)**: Ogni nuovo account generato viene avviato in modalità restrittiva Sandbox (**`TrustTier.PROBATION`**), applicando un rate-limiting (max 1 post al giorno) e restrizioni di sincronizzazione.
 * **RF-06 (Scoperta Snapshot Topic)**: I topic erogati dal Gateway Web rappresentano la **fotografia locale del DB del nodo Gateway**, integrando l'identità del nodo emittente ed il timestamp dell'ultimo aggiornamento.
-* **RF-07 (Promozione via Quorum Multicriterio)**: Il passaggio da Sandbox a membro effettivo (**`FULL_MEMBER`**) avviene solo al soddisfacimento concorrente di 5 requisiti (Time-lock 72h, Quorum $K=3$ endorsement distinti, Sponsor iniziale, 1 post valido, 0 segnalazioni di abuso).
+* **RF-07 (Promozione via Quorum Multicriterio)**: Il passaggio da Sandbox a membro effettivo (**`FULL_MEMBER`**) avviene solo quando sono soddisfatti tutti i 5 requisiti adattivi definiti in `modello_promozione.md`: permanenza minima dinamica ($\Delta T_{\text{dynamic}}$, compresa tra 24 e 168 ore), sponsor iniziale, quorum di endorsement distinti dinamico ($K_{\text{dynamic}}$, calcolato sulla stima dei membri attivi), incontri P2P diversificati e attività utile senza segnalazioni di abuso.
 
 ### 1.2 Requisiti di Sicurezza (RS)
 * **RS-01 (Protezione Dati Sensibili nei Deep Link)**: I Deep Link non devono esporre in chiaro chiavi private, token di sessione o credenziali del database nella query string dell'browser. Tutti i parametri sensibili devono essere codificati/cifrati o collegati tramite token effimeri.
@@ -45,7 +45,7 @@ Questo documento costituisce la **specifica formale del Modulo 1**, definendo i 
 
 ### 2.1 QR Code Pubblico di Comunità (Ingresso Autonomo)
 * **Scopo**: Consentire l'accesso informativo ed il download dell'APK a chiunque arrivi sul posto.
-* **Esito Onboarding**: L'utente installa l'app e crea l'account in autonomia. Non essendoci uno sponsor iniziale predefinito, la promozione a `FULL_MEMBER` richiederà l'incontro P2P ed il voto favorevole di $K membri della comunità ed il trascorrere del time-lock di 72 ore.
+* **Esito Onboarding**: L'utente installa l'app e crea l'account in autonomia. Non essendoci uno sponsor iniziale predefinito, dovrà incontrare un `FULL_MEMBER` che accetti di sponsorizzare la richiesta. La promozione richiederà inoltre il quorum dinamico di endorsement distinti, incontri P2P diversificati, attività utile e il completamento del periodo di osservazione adattivo.
 
 ### 2.2 QR Code d'Invito Personale (Invito Autenticato da Sponsor)
 * **Scopo**: Consentire a un `FULL_MEMBER` (*Bob*) di invitare sul campo un nuovo utente (*Alice*), fungendo da primo sponsor.
@@ -207,10 +207,12 @@ class AccountManagerImpl implements AccountManager {
             long now = System.currentTimeMillis();
             
             settings.put("trustTier", "PROBATION");
-            settings.put("sandboxStartTime", String.valueOf(now)); // Inizio Time-lock 72h
+            settings.put("sandboxStartTime", String.valueOf(now)); // Inizio periodo di osservazione adattivo
             settings.put("endorsementCount", "0");
-            settings.put("validPostsCount", "0");
+            settings.put("usefulActivityCount", "0");
             settings.put("abuseFlagCount", "0");
+            settings.put("estimatedNetworkSize", "10"); // Valore iniziale, da aggiornare con la stima locale
+            settings.put("encounterRatePerHour", "1.0"); // Valore iniziale, da aggiornare con gli incontri osservati
             settings.put("maxPostsPerDay", "1");
             
             if (topics != null) settings.put("subscribedTopics", String.join(",", topics));
@@ -238,8 +240,6 @@ import org.briarproject.bramble.api.settings.SettingsManager;
 public class TrustManagerImpl {
 
     private static final String NAMESPACE_COMMUNITY = "community.trust";
-    private static final long MIN_SANDBOX_DURATION_MS = 3 * 86_400_000L; // 72 Ore
-    private static final int REQUIRED_ENDORSEMENT_QUORUM = 3;             // K = 3
     private final SettingsManager settingsManager;
 
     /**
@@ -252,23 +252,33 @@ public class TrustManagerImpl {
 
         long startTime = Long.parseLong(settings.getOrDefault("sandboxStartTime", "0"));
         int endorsementCount = Integer.parseInt(settings.getOrDefault("endorsementCount", "0"));
-        int postsCount = Integer.parseInt(settings.getOrDefault("validPostsCount", "0"));
+        int usefulActivityCount = Integer.parseInt(settings.getOrDefault("usefulActivityCount", "0"));
         int abuseFlags = Integer.parseInt(settings.getOrDefault("abuseFlagCount", "0"));
+        int estimatedNetworkSize = Integer.parseInt(settings.getOrDefault("estimatedNetworkSize", "10"));
+        double encounterRate = Double.parseDouble(settings.getOrDefault("encounterRatePerHour", "1.0"));
         String sponsorId = settings.get("sponsorAuthorId");
 
+        // Le soglie adattive sono calcolate secondo il modello di promozione.
+        int dynamicK = calculateDynamicQuorum(estimatedNetworkSize);
+        long dynamicTimeLockMs = calculateDynamicTimeLock(encounterRate);
+
         // VERIFICA DEI 5 REQUISITI
-        boolean timeLockPassed = (System.currentTimeMillis() - startTime) >= MIN_SANDBOX_DURATION_MS;
-        boolean quorumPassed = endorsementCount >= REQUIRED_ENDORSEMENT_QUORUM;
+        boolean timeLockPassed = (System.currentTimeMillis() - startTime) >= dynamicTimeLockMs;
+        boolean quorumPassed = endorsementCount >= dynamicK;
         boolean sponsorPresent = (sponsorId != null && !sponsorId.isEmpty());
-        boolean activityPassed = postsCount >= 1;
+        boolean encounterDiversityPassed = hasDiverseEncounterSessions(settings);
+        boolean activityPassed = usefulActivityCount >= 1;
         boolean cleanRecord = (abuseFlags == 0);
 
-        if (timeLockPassed && quorumPassed && sponsorPresent && activityPassed && cleanRecord) {
+        if (timeLockPassed && sponsorPresent && quorumPassed && encounterDiversityPassed && activityPassed && cleanRecord) {
             executePromotionToFullMember();
             return true;
         }
         return false;
     }
+
+    // Le funzioni di calcolo delle soglie e di verifica delle sessioni
+    // distinte applicano le regole definite nel modello di promozione.
 
     private void executePromotionToFullMember() throws DbException {
         Settings update = new Settings();

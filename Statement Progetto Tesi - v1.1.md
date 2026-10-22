@@ -173,10 +173,11 @@ prioritariamente prevista per Android.
 
   - Accesso ristretto a una sola parte delle informazioni pubblicate.
 
-  - Periodo minimo di permanenza nella comunità (es. 3 giorni)
+  - Periodo di osservazione adattivo, calcolato in base al tasso degli incontri P2P e limitato a un intervallo tra 24 ore e 7 giorni.
 
-- **Promozione o Isolamento:** Se dopo un periodo di osservazione
-  l'utente e i suoi contributi vengono valutati positivamente tramite il
-  quorum di prossimità, le restrizioni decadono e il nodo viene
+- **Promozione o Isolamento:** Se dopo il periodo di osservazione adattivo
+  l'utente soddisfa i requisiti del modello multicriterio — sponsor,
+  quorum dinamico di membri distinti, incontri P2P diversificati, attività
+  utile e assenza di segnalazioni — le restrizioni decadono e il nodo viene
   integrato a pieno titolo. In caso di comportamenti anomali, il nodo
   viene isolato ed escluso dalle <u>comunicazioni</u>.
