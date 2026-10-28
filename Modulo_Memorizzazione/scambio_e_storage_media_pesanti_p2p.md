@@ -2,7 +2,7 @@
 
 Questo documento costituisce lo studio architetturale formale dedicato allo **scambio ed allo storage distribuito di file multimediali pesanti (Video HD, Foto ad alta risoluzione, Registrazioni Audio)** in un'applicazione di giornalismo partecipativo P2P per scenari di emergenza.
 
-Il documento approfondisce le 4 tecniche fondamentali per eliminare qualsiasi *Single Point of Failure (SPOF)*, associa **ogni affermazione alla relativa fonte ufficiale o accademica**, e fornisce la **mappatura esatta dei file di codice (nuovi e modificati)** con relativi path del repository Briar e codice interamente documentato.
+Il documento approfondisce 4 tecniche per ridurre la dipendenza da un singolo dispositivo e mitigare il rischio di perdita del file, associa **ogni affermazione alla relativa fonte ufficiale o accademica**, e fornisce la **mappatura dei file di codice (nuovi e modificati)** con relativi path del repository Briar e pseudocodice architetturale.
 
 ---
 
@@ -11,8 +11,8 @@ Il documento approfondisce le 4 tecniche fondamentali per eliminare qualsiasi *S
 Nelle situazioni di catastrofe o censura, le testimonianze visive (es. filmati HD da 50 MB - 500 MB) sono le prove più preziose per documentare gli avvenimenti.
 
 Tuttavia, il trasferimento di file pesanti in una rete P2P mobile ad-hoc presenta tre ostacoli critici `[Fonte: Vahdat & Becker, 2000 - Epidemic Routing]`:
-1. **Canali Radio Lenti ed Intermittenti**: Trasferire un unico file da 100 MB su Bluetooth o Wi-Fi Direct richiede minuti di vicinanza continua. Se due persone si allontanano a metà invio, la trasmissione fallisce.
-2. **Rischio di Distruzione / Sequestro (SPOF)**: Se l'unico dispositivo che possiede il video originale viene distrutto o sequestrato prima della consegna, la prova va persa per sempre.
+1. **Canali Radio Lenti ed Intermittenti**: Trasferire un unico file da 100 MB su Bluetooth o Wi-Fi Direct può richiedere una vicinanza prolungata. Se due persone si allontanano a metà invio, la sessione si interrompe e deve poter riprendere dai blocchi già trasferiti.
+2. **Rischio di Distruzione / Sequestro (SPOF)**: Se l'unico dispositivo che possiede il video originale viene distrutto o sequestrato prima che porzioni sufficienti siano state propagate, la prova può andare persa.
 3. **Limiti di Memoria degli Smartphone**: I dispositivi mobili hanno uno spazio disco fisso limitato e non possono conservare tutti i video inviati dall'intera comunità.
 
 ---
@@ -29,13 +29,13 @@ Per risolvere questi problemi senza server centrali e senza Single Point of Fail
  │    └─ Il file pesante viene diviso in blocchi cifrati e legati da Hash DAG      │
  ├─────────────────────────────────────────────────────────────────────────────────┤
  │ 2. ERASURE CODING (RaptorQ IETF RFC 6330 / Reed-Solomon)                        │
- │    └─ Generazione di blocchi di parità: ricostruzione con N blocchi su N+M      │
+ │    └─ Simboli di riparazione: ricostruzione da simboli sufficienti per blocco  │
  ├─────────────────────────────────────────────────────────────────────────────────┤
  │ 3. P2P DTN SWARMING (Distribuzione a Sciame Epidemico stile BitTorrent)         │
  │    └─ I nodi trasportano e scambiano pezzi diversi dello stesso video           │
  ├─────────────────────────────────────────────────────────────────────────────────┤
  │ 4. STORAGE QUOTA & LRU PRUNING CON PRIORITÀ AL QUORUM                           │
- │    └─ Gestione dello spazio disco con conservazione garantita dei media validati│
+ │    └─ Quota disco con priorità di conservazione per i media validati           │
  └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -74,20 +74,20 @@ Il *Chunking* è la tecnica che suddivide un file di grandi dimensioni in una se
 ### MECCANISMO 2: Erasure Coding (RaptorQ IETF RFC 6330 / Reed-Solomon)
 
 #### **Spiegazione del Funzionamento e Nomi dei Componenti**
-In una rete ad-hoc d'emergenza dove i dispositivi possono spegnersi, distruggersi o allontanarsi, se un singolo blocco va perso, l'intero video non sarebbe più ricomponibile `[Fonte: Luby et al., 2011 - IETF RFC 6330]`.
+In una rete ad-hoc d'emergenza dove i dispositivi possono spegnersi, distruggersi o allontanarsi, la perdita di simboli può impedire la ricostruzione se non sono disponibili copie o ridondanza sufficienti `[Fonte: Luby et al., 2011 - IETF RFC 6330]`.
 L'**Erasure Coding** (ed in particolare i **Fountain Codes RaptorQ**) è un algoritmo di correzione d'errore in avanti (*Forward Error Correction - FEC*) `[Fonte: Luby et al., 2011]`.
 
 * **Generazione dei Simboli di Parità ($N \rightarrow N + M$)**:
-  * Se il video cifrato viene diviso in $N = 100$ blocchi dati primari, l'algoritmo RaptorQ calcola una combinazione di equazioni algebriche sui campi di Galois $GF(2^8)$ e genera $M = 50$ blocchi di parità aggiuntivi (totale 150 blocchi) `[Fonte: Reed & Solomon, 1960 / Luby et al., 2011]`.
+  * Se un blocco sorgente contiene $K = 100$ simboli, l'encoder RaptorQ può generare simboli di riparazione aggiuntivi (per esempio 50). La quantità di ridondanza è una scelta del profilo di trasferimento e non implica che ogni combinazione di $K$ simboli permetta sempre la decodifica `[Fonte: Luby et al., 2011]`.
 * **Proprietà dei Fountain Codes (Simboli Illimitati)**:
   A differenza del classico Reed-Solomon, i *Fountain Codes* RaptorQ possono generare uno stream potenzialmente infinito di blocchi di parità `[Fonte: Luby et al., 2011]`.
-* **Ricostruzione Matematica Garantita**:
-  Qualsiasi nodo della comunità che riesce a raccogliere **un qualsiasi sottoinsieme di $N$ blocchi distinti su $N+M$** (es. 100 blocchi qualsiasi su 150) è matematicamente in grado di ricostruire il video originale al 100% `[Fonte: Luby et al., 2011]`.
+* **Ricostruzione con ridondanza**:
+  Il decoder ricostruisce un blocco sorgente da un insieme sufficiente di simboli sorgente e di riparazione. In genere un numero pari a $K$ è sufficiente; in rari casi servono alcuni simboli aggiuntivi. Il ricevitore verifica l'esito e può richiedere altri simboli di riparazione se la decodifica non riesce `[Fonte: Luby et al., 2011]`.
 
 ```
- Payload Video Originale (N Blocchi) ───> [ RaptorQ Encoder ] ───> N + M Blocchi Distribuiti
+ Payload Video (Blocchi Sorgente) ──────> [ RaptorQ Encoder ] ───> Simboli Sorgente + Riparazione
                                                                           │
-  Qualsiasi N blocchi ricevuti ─────────> [ RaptorQ Decoder ] ───> Video Ricostruito al 100%
+  Simboli sufficienti per ogni blocco ──> [ RaptorQ Decoder ] ───> Verifica e ricostruzione
 ```
 
 #### **Fonti del Meccanismo 2**:
@@ -102,7 +102,7 @@ L'**Erasure Coding** (ed in particolare i **Fountain Codes RaptorQ**) è un algo
 I nodi della comunità **non devono scaricare o trasportare ciascuno l'intero file da 100 MB** `[Fonte: Cohen, B., 2003 - BitTorrent Protocol]`.
 
 * **Mappa di Disponibilità dei Blocchi (*Chunk Availability Map*)**:
-  Ogni nodo mantiene una mappa di bit (*bitfield*) che indica quali blocchi dello sciame possiede attualmente nel proprio DB locale `[Fonte: Cohen, B., 2003]`.
+  Ogni nodo mantiene una mappa di bit (*bitfield*) che indica quali simboli dello sciame possiede attualmente nel proprio DB locale. Per RaptorQ la mappa distingue almeno il blocco sorgente e l'Encoding Symbol Identifier (ESI), così il peer conta solo simboli distinti per ogni blocco `[Fonte: Cohen, B., 2003 / RFC 6330]`.
 * **Scambio Epidemico Opportunistico**:
   1. Durante un incontro Bluetooth/Wi-Fi Direct, i due nodi scambiano il proprio `MediaManifestMessage` e la rispettiva *Chunk Availability Map*.
   2. Se *Bob* possiede i blocchi `0..30` e *Charlie* possiede i blocchi `31..60`, durante la sessione P2P Bob scarica da Charlie i blocchi che gli mancano e viceversa `[Fonte: Vahdat & Becker, 2000 - Epidemic Routing]`.
@@ -123,12 +123,98 @@ Poiché gli smartphone hanno memoria disco limitata, l'app gestisce lo storage t
 * **Quota di Memoria Allocata**: L'utente imposta una quota disco dedicata alla comunità (es. 2 GB) `[Fonte: Sleator & Tarjan, 1985]`.
 * **Algoritmo di Pruning LRU (*Least Recently Used*) Modificato**:
   Quando lo spazio allocato si esaurisce, l'app applica l'eliminazione dei blocchi secondo 3 livelli di priorità rigorosi `[Fonte: Sleator & Tarjan, 1985]`:
-  * **Priorità 1 (Inviolabile - *Pinned Storage*)**: Blocchi appartenenti a video/media legati a post che hanno raggiunto il **Quorum di Validazione della Comunità** (`COMMUNITY_VALIDATED`).
+  * **Priorità 1 (*Pinned Storage*)**: Blocchi appartenenti a video/media legati a post che hanno raggiunto il **Quorum di Validazione della Comunità** (`COMMUNITY_VALIDATED`) sono conservati prima degli altri blocchi. Se la quota o lo spazio fisico non consentono di mantenerli, serve una policy esplicita di saturazione e l'app non deve dichiararne garantita la conservazione.
   * **Priorità 2**: Blocchi appartenenti a post recenti ancora in fase di validazione.
   * **Priorità 3 (Cancellabili)**: Blocchi appartenenti a post vecchi o privi di conferme da parte dei nodi vicini.
 
 #### **Fonti del Meccanismo 4**:
 1. *Sleator, D. D., & Tarjan, R. E. (1985)*. "Amortized efficiency of list update and paging rules". *Communications of the ACM*, 28(2), 202-208.
+
+---
+
+### Caso d'uso: distribuzione opportunistica di un video da 96 MiB
+
+Il seguente esempio mostra come il file possa raggiungere un destinatario anche se gli utenti non sono tutti collegati contemporaneamente e il dispositivo che lo ha registrato diventa indisponibile. È uno scenario progettuale illustrativo, non una misura di prestazioni; i calcoli trascurano l'overhead di manifest, cifratura e trasporto.
+
+#### Utenti e dimensionamento
+
+Sono coinvolti **sei utenti**: Alice registra il video; Bob, Charlie e Dana fungono da nodi trasportatori; Elena raccoglie i blocchi e ricostruisce il video; Farah è l'utente finale che lo richiede. I contatti avvengono in momenti diversi, tramite Wi-Fi Direct quando disponibile; Bluetooth può trasportare i dati quando è l'unico collegamento disponibile, con trasferimenti che possono richiedere più incontri. Ogni sessione trasferisce soltanto i blocchi mancanti e può interrompersi senza annullare quelli già salvati.
+
+Per rendere concreto il dimensionamento, si assume un video di **96 MiB** e simboli da **256 KiB**:
+
+* Alice ottiene 384 simboli sorgente, organizzati in 12 blocchi sorgente da 32 simboli ciascuno;
+* per ogni blocco sorgente l'encoder genera 16 simboli di riparazione: 192 simboli aggiuntivi complessivi;
+* lo sciame contiene quindi 576 simboli da 256 KiB, pari a **144 MiB** codificati (ridondanza illustrativa del 50% rispetto al file originale, in linea con il profilo esemplificativo descritto sopra);
+* Bob, Charlie e Dana ricevono ciascuno 16 simboli per ogni blocco sorgente, cioè 192 simboli o **48 MiB** a testa. Le loro porzioni coprono tutti i 12 blocchi sorgente;
+* Elena raccoglie le porzioni dei tre trasportatori. Per ciascun blocco sorgente dispone così di 48 simboli distinti a fronte dei 32 simboli sorgente; il decoder verifica la decodifica blocco per blocco. Se un blocco non è ancora recuperabile, richiede ulteriori simboli di riparazione, se disponibili.
+
+I numeri sono scelti per illustrare la distribuzione, non costituiscono una garanzia matematica di recupero per qualunque insieme di simboli. RaptorQ recupera normalmente con circa $K$ simboli per blocco, ma può averne bisogno di alcuni in più; il ricevitore non considera il file completo finché decodifica e verifica d'integrità non hanno avuto esito positivo.
+
+#### Flusso passo per passo
+
+1. **Preparazione sul dispositivo di Alice**: Alice crea il post e seleziona la condivisione con la comunità autorizzata. L'app cifra il video, lo suddivide in blocchi da 256 KiB, produce i simboli RaptorQ e calcola gli identificativi e i dati d'integrità. La chiave di decifratura viaggia soltanto nel manifest protetto dal canale/gruppo autorizzato.
+2. **Annuncio leggero**: l'app diffonde il post e il `MediaManifestMessage`, che descrive dimensioni, formato, radice Merkle, parametri RaptorQ e identificativi dei simboli. Il manifest non contiene il video; consente ai peer di riconoscere l'oggetto e richiedere i blocchi.
+3. **Primo incontro con Bob**: Alice e Bob confrontano manifest e mappe di disponibilità. Bob riceve 16 simboli per ciascuno dei 12 blocchi sorgente (48 MiB). Il trasferimento può avvenire in più sessioni: gli identificativi già persistiti vengono marcati e non sono richiesti di nuovo.
+4. **Distribuzione parallela verso Charlie e Dana**: in incontri successivi Alice consegna a Charlie una seconda partizione e a Dana la terza. Ciascuno conserva 48 MiB distribuiti su tutti i blocchi sorgente. Nel frattempo il loro dispositivo agisce da *store-carry-and-forward*: conserva i simboli e li porta fisicamente ai peer incontrati in seguito.
+5. **Indisponibilità della sorgente**: Alice perde la connettività o il telefono si spegne. Il video resta ricostruibile a partire dalle porzioni distribuite tra Bob, Charlie e Dana; nessun singolo trasportatore ha bisogno di custodire il file completo.
+6. **Raccolta da parte di Elena**: in tre incontri distinti, Bob, Charlie e Dana confrontano le rispettive mappe con quella di Elena e le inviano solo i simboli che le mancano. Elena salva ogni simbolo ricevuto, verifica identificativi e duplicati e aggiorna la mappa locale. Se la sessione cade, la successiva riparte dai blocchi mancanti.
+7. **Ricostruzione e controllo**: quando Elena possiede abbastanza simboli per ciascuno dei 12 blocchi, esegue la decodifica RaptorQ, ricompone i blocchi sorgente nell'ordine previsto, verifica la radice Merkle e decifra il contenuto. Se mancano simboli per un trasferimento interrotto, li richiede nuovamente al peer che li conserva; se il decoder richiede ulteriore ridondanza, la recupera solo se un peer può fornirla. In assenza di simboli sufficienti il file resta incompleto e non viene presentato come verificato.
+8. **Consegna a Farah**: Farah richiede il video. Elena pubblica o comunica il manifest e le disponibilità, poi trasferisce i 384 simboli sorgente (96 MiB), oppure simboli codificati sufficienti, nelle sessioni P2P disponibili. Farah può riceverli da Elena e, se la connessione si interrompe, riprendere il trasferimento o raccogliere blocchi da altri nodi che li conservano.
+9. **Gestione dello spazio**: i peer applicano la quota locale. I blocchi non validati e meno recenti sono candidati al pruning; i media associati a un post validato possono avere priorità di conservazione secondo la policy concordata. Il manifest deve riflettere la disponibilità effettiva, perché una mappa non aggiornata potrebbe far richiedere blocchi che il peer ha già eliminato.
+
+La distribuzione coinvolge quindi l'autrice, tre trasportatori, un nodo che raccoglie e ricostruisce, e un destinatario finale: **sei utenti complessivi**. Il file non viene replicato integralmente su ogni telefono; vengono inoltrati sottoinsiemi di simboli e il destinatario li ricompone quando ne ha raccolti abbastanza per ogni blocco sorgente.
+
+#### Diagramma di sequenza
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Alice
+    participant AppA as App di Alice
+    participant AppB as App di Bob
+    participant AppC as App di Charlie
+    participant AppD as App di Dana
+    participant AppE as App di Elena
+    participant AppF as App di Farah
+
+    Alice->>AppA: Registra video da 96 MiB e crea post
+    AppA->>AppA: Cifra, divide in 12 blocchi sorgente e genera simboli RaptorQ
+    AppA->>AppA: Firma manifest con parametri, radice Merkle e mappa dei simboli
+    AppA->>AppB: Incontro P2P: manifest + availability map di Alice
+    AppB->>AppA: Availability map di Bob
+    AppB->>AppA: Richiede la propria partizione (16 simboli per blocco)
+    AppA->>AppB: Trasferisce 192 simboli (48 MiB)
+    AppB->>AppB: Verifica, salva su storage persistente e aggiorna availability map
+    AppA->>AppC: Incontro P2P successivo: manifest + availability map di Alice
+    AppC->>AppA: Availability map di Charlie e richiesta della partizione
+    AppA->>AppC: Trasferisce partizione distinta: 192 simboli (48 MiB)
+    AppC->>AppC: Verifica, salva su storage persistente e aggiorna availability map
+    AppA->>AppD: Incontro P2P successivo: manifest + availability map di Alice
+    AppD->>AppA: Availability map di Dana e richiesta della partizione
+    AppA->>AppD: Trasferisce la terza partizione: 192 simboli (48 MiB)
+    AppD->>AppD: Verifica, salva su storage persistente e aggiorna availability map
+
+    Note over AppA,AppD: Alice diventa indisponibile, Bob, Charlie e Dana conservano porzioni complementari
+
+    AppB->>AppE: Incontro P2P: scambio availability map
+    AppE->>AppB: Richiede simboli mancanti
+    AppB->>AppE: Trasferisce la propria partizione
+    AppC->>AppE: Incontro P2P: scambio availability map e trasferimento partizione
+    AppD->>AppE: Incontro P2P: scambio availability map e trasferimento partizione
+    AppE->>AppE: Verifica copertura per ogni blocco sorgente
+    alt Simboli sufficienti e decodifica valida
+        AppE->>AppE: Decodifica RaptorQ, verifica Merkle e decifra
+    else Simboli mancanti o decodifica fallita
+        AppE-->>AppB: Richiede in seguito simboli mancanti o ridondanza, se disponibile
+    end
+
+    Farah->>AppF: Richiede il video
+    AppE->>AppF: Incontro P2P: manifest e availability map
+    AppF->>AppE: Richiede i 384 simboli sorgente (96 MiB)
+    AppE->>AppF: Trasferisce i simboli richiesti, conserva gli ACK di ricezione
+    AppF->>AppF: Salva i blocchi, riprende dai mancanti ai successivi incontri
+    AppF->>AppF: Ricompone, verifica integrità e decifra il video
+```
 
 ---
 
@@ -346,7 +432,7 @@ public class MediaSwarmManagerImpl implements MediaSwarmManager {
         byte[] rawBytes = readAllBytes(rawMediaFile);
         byte[] encryptedPayload = crypto.encryptWithSecretKey(mediaKey, rawBytes);
 
-        // Step 2: Applicazione Erasure Coding RaptorQ (N blocchi dati -> N*1.5 blocchi totali)
+        // Step 2: Erasure Coding RaptorQ con rapporto di ridondanza configurabile
         List<byte[]> encodedBlocks = applyRaptorQEncoding(encryptedPayload);
         int requiredChunksCount = (int) Math.ceil(encryptedPayload.length / (double) CHUNK_SIZE_BYTES);
 
@@ -495,7 +581,7 @@ public class DuplexOutgoingSession implements SyncSession {
 
 ### E. [FILE DA MODIFICARE]: `DatabaseComponentImpl.java`
 * **Path**: `bramble-core/src/main/java/org/briarproject/bramble/db/DatabaseComponentImpl.java`
-* **Natura Modifica**: Implementazione della gestione della quota disco locale e dell'algoritmo di **Pruning LRU con priorità inviolabile al Quorum** (`COMMUNITY_VALIDATED`).
+* **Natura Modifica**: Implementazione della gestione della quota disco locale e dell'algoritmo di **Pruning LRU con priorità di conservazione per il Quorum** (`COMMUNITY_VALIDATED`).
 
 ```java
 // FILE DA MODIFICARE - Path: bramble-core/src/main/java/org/briarproject/bramble/db/DatabaseComponentImpl.java
@@ -525,8 +611,10 @@ public class DatabaseComponentImpl implements DatabaseComponent {
             }
 
             // PRIORITÀ 1 (INVIOLABILI - Pinned Storage):
-            // I chunk appartenenti a post con Quorum 'COMMUNITY_VALIDATED' NON VENGONO MAI CANCELLATI!
-            LOG.info("Pruning completato. I media con Quorum 'COMMUNITY_VALIDATED' sono stati preservati.");
+            // I chunk 'COMMUNITY_VALIDATED' hanno priorità di conservazione.
+            // Se non è possibile rispettare la quota senza rimuoverli, segnala
+            // la saturazione e applica la policy esplicita definita dal progetto.
+            LOG.info("Pruning completato; verificare lo spazio residuo e la policy di saturazione.");
         }
     }
 }

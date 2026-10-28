@@ -122,6 +122,79 @@ Le autorizzazioni della comunità ed il livello di fiducia non vengono inseriti 
    * La Verifiable Credential del Quorum di Comunità che attesta che l'autore è un `FULL_MEMBER` accreditato.
    * Il tutto formattato in **JSON-LD / W3C Verifiable Credential**, verificabile da qualsiasi software esterno o tribunale internazionale senza bisogno dell'app Briar!
 
+### 3.2 Esempi di identità nella comunità
+
+Gli esempi seguenti mostrano come lo stesso modello distingue l'identità crittografica dell'utente dalle attestazioni sul suo ruolo. I DID e gli identificativi sono abbreviati e illustrativi: in un'implementazione reale sarebbero derivati dalla chiave pubblica dell'utente. La chiave privata rimane nel database cifrato del dispositivo e non viene inclusa nei messaggi o nelle credenziali.
+
+#### Utente appena entrato: Alice (`PROBATION`)
+
+Alice ha appena creato il proprio account ed è entrata tramite un invito di Bob. L'app genera la sua identità Briar e il corrispondente DID; l'invito produce una credenziale di sponsorizzazione. Alice è in stato `PROBATION`: non possiede ancora una credenziale di appartenenza `FULL_MEMBER`.
+
+```json
+{
+  "identity": {
+    "authorId": "sha256:7d3a...91c2",
+    "name": "Alice",
+    "did": "did:key:z6Mk...Alice",
+    "publicKey": "ed25519:MCow...A1"
+  },
+  "communityState": {
+    "trustTier": "PROBATION",
+    "sandboxStartTime": "2026-10-28T10:00:00Z",
+    "membershipCredential": null
+  },
+  "credentials": [
+    {
+      "type": "SponsorshipCredential",
+      "issuer": "did:key:z6Mk...Bob",
+      "subject": "did:key:z6Mk...Alice",
+      "communityId": "did:peer:2...Community",
+      "issuedAt": "2026-10-28T10:00:00Z",
+      "proof": "<firma dell'identità di Bob>"
+    }
+  ]
+}
+```
+
+Lo stato `PROBATION` indica le restrizioni locali applicate all'account; la `SponsorshipCredential` attesta invece chi ha sponsorizzato l'ingresso. La credenziale non promuove Alice automaticamente e non equivale a una credenziale di appartenenza.
+
+#### Utente già affidabile: Bob (`FULL_MEMBER`)
+
+Bob possiede la stessa identità crittografica stabile nel tempo e una `CommunityMembershipCredential` rilasciata dopo il soddisfacimento dei requisiti dinamici di promozione. La credenziale riporta la comunità, il ruolo e i riferimenti alle attestazioni che supportano la promozione.
+
+```json
+{
+  "identity": {
+    "authorId": "sha256:2a84...6f10",
+    "name": "Bob",
+    "did": "did:key:z6Mk...Bob",
+    "publicKey": "ed25519:MCow...B7"
+  },
+  "communityState": {
+    "trustTier": "FULL_MEMBER",
+    "promotionTimestamp": "2026-10-25T16:30:00Z"
+  },
+  "credentials": [
+    {
+      "type": "CommunityMembershipCredential",
+      "issuer": "did:peer:2...Community",
+      "subject": "did:key:z6Mk...Bob",
+      "communityId": "did:peer:2...Community",
+      "claims": {
+        "trustTier": "FULL_MEMBER",
+        "dynamicQuorumRequired": 4,
+        "distinctEndorsements": 4,
+        "dynamicObservationPeriodSatisfied": true,
+        "encounterDiversityVerified": true,
+        "usefulActivityVerified": true,
+        "abuseFlags": 0
+      },
+      "proof": "<firma dell'emittente comunitario secondo il quorum>"
+    }
+  ]
+}
+```
+
 ---
 
 ## 4. Mappatura ed Estensione del Codice di Briar
